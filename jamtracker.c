@@ -249,7 +249,7 @@ int main( int argc, char* args[] )
     apply_surface( 0, 0, background, screen, NULL );
 
     //Render the text
-    message = TTF_RenderText_Solid( font, "Press 1, 2, 3, or 4 to play a sound effect", textColor );
+    message = TTF_RenderText_Solid( font, "Up/Down to select the sound", textColor );
 
     //If there was an error in rendering the text
     if( message == NULL )
@@ -264,7 +264,7 @@ int main( int argc, char* args[] )
     SDL_FreeSurface( message );
 
     //Render the text
-    message = TTF_RenderText_Solid( font, "Press 9 to play or pause the music", textColor );
+    message = TTF_RenderText_Solid( font, "Letters to play the notes", textColor );
 
     //If there was an error in rendering the text
     if( message == NULL )
@@ -279,7 +279,7 @@ int main( int argc, char* args[] )
     SDL_FreeSurface( message );
 
     //Render the text
-    message = TTF_RenderText_Solid( font, "Press 0 to stop the music", textColor );
+    message = TTF_RenderText_Solid( font, "zSxDcvGbHnJm - q2w3er5t6y7ui9o0p", textColor );
 
     //If there was an error in rendering the text
     if( message == NULL )
@@ -340,12 +340,27 @@ float freq_tab[12]={
 	220.00, 233.08, 246.94
 };
 
+float oct_tab[12]={1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0};
+
 void set_note(uint8_t note, uint8_t smp)
 {
-	float octave = (note/12)+1;
-	float phase = (freq_tab[note%12]*octave/261.63)*0x10000;
+	uint8_t octave = (note/12);
+	float phase;
+	uint32_t p;
+
+	if (octave > 5)
+	{
+		octave = 5;
+	}
+
+	phase = (freq_tab[note%12]*oct_tab[octave]/261.63);
+
+	p = phase*0x10000;
+
+	printf("%d %d %lf %08X\n", octave, note%12, phase, p);
+
 	if (SDL_LockMutex(mutex) == 0) {
-		SamplerGlobalStatus.phase[0] = phase;
+		SamplerGlobalStatus.phase[0] = p;
 		SamplerGlobalStatus.sample[0]=smp;
 		SamplerGlobalStatus.pointer[0]=0;
   		/* Do stuff while mutex is locked */
@@ -645,7 +660,7 @@ else {
     }
     */
     //Set the window caption
-    SDL_WM_SetCaption( "Monitor Music", NULL );
+    SDL_WM_SetCaption( "Jam Tracker", NULL );
 
     //If everything initialized fine
     return 1;
