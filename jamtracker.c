@@ -2,17 +2,17 @@
 and may not be redistributed without written permission.*/
 
 //The headers
-#include <SDL/SDL.h>
-#include <SDL/SDL_image.h>
-#include <SDL/SDL_ttf.h>
-#include <SDL/SDL_mixer.h>
+#include <SDL2/SDL.h>
+//#include <SDL/SDL_image.h>
+//#include <SDL/SDL_ttf.h>
+//#include <SDL/SDL_mixer.h>
 #include <stdio.h>
 #include <strings.h>
 
 //Screen attributes
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
-const int SCREEN_BPP = 32;
+const int SCREEN_BPP = 0;
 
 struct {
 	size_t len;
@@ -37,6 +37,7 @@ struct _SamplerStatus {
 	uint32_t pointer[8];
 } SamplerGlobalStatus;
 
+SDL_Window *window = NULL;
 //The surfaces
 SDL_Surface *background = NULL;
 SDL_Surface *message = NULL;
@@ -46,21 +47,16 @@ SDL_Surface *screen = NULL;
 SDL_Event event;
 
 //The font
-TTF_Font *font = NULL;
+//TTF_Font *font = NULL;
 
 //The color of the font
 SDL_Color textColor = { 0, 0, 0 };
 
 //The music that will be played
-Mix_Music *music = NULL;
 
 //The sound effects that will be used
-Mix_Chunk *scratch = NULL;
-Mix_Chunk *high = NULL;
-Mix_Chunk *med = NULL;
-Mix_Chunk *low = NULL;
 
-Mix_Chunk test[31];
+//Mix_Chunk test[31];
 
 SDL_mutex *mutex;
 
@@ -73,31 +69,34 @@ SDL_Surface *load_image(const char *filename )
     SDL_Surface* optimizedImage = NULL;
 
     //Load the image
-    loadedImage = IMG_Load( filename );
+    loadedImage = SDL_LoadBMP( filename );
 
     //If the image loaded
     if( loadedImage != NULL )
     {
+		printf("Loaded... %p\n", screen);
         //Create an optimized surface
-        optimizedImage = SDL_DisplayFormat( loadedImage );
+        optimizedImage = SDL_ConvertSurface( loadedImage, screen->format, 0 );
 
         //Free the old surface
-        SDL_FreeSurface( loadedImage );
+//        SDL_FreeSurface( loadedImage );
 
         //If the surface was optimized
         if( optimizedImage != NULL )
         {
             //Color key surface
-            SDL_SetColorKey( optimizedImage, SDL_SRCCOLORKEY, SDL_MapRGB( optimizedImage->format, 0, 0xFF, 0xFF ) );
+          //  SDL_SetColorKey( optimizedImage, SDL_SRCCOLORKEY, SDL_MapRGB( optimizedImage->format, 0, 0xFF, 0xFF ) );
         }
-    }
+    } 
+
 
     //Return the optimized surface
-    return optimizedImage;
+    return loadedImage;
 }
 
 void apply_surface( int x, int y, SDL_Surface* source, SDL_Surface* destination, SDL_Rect* clip )
 {
+	int r;
     //Holds offsets
     SDL_Rect offset;
 
@@ -106,7 +105,10 @@ void apply_surface( int x, int y, SDL_Surface* source, SDL_Surface* destination,
     offset.y = y;
 
     //Blit
-    SDL_BlitSurface( source, clip, destination, &offset );
+    r = SDL_BlitSurface( source, clip, destination, &offset );
+	printf("Blit r: %d\n", r);
+//	SDL_FillRect(screen, &screen->clip_rect, SDL_MapRGB(screen->format, 100, 0, 0));
+//	SDL_Flip(screen);
 }
 
 int load_mod(char *modfile)
@@ -197,7 +199,7 @@ int load_mod(char *modfile)
 	fseek(fp, max*64*4*4, SEEK_CUR);
 	printf("L: %ld\n", ftell(fp));
 	for(i=0;i<nSamples;i++) {
-		printf("S: %u\n", Samples[i].len);
+		printf("S: %u\n", (unsigned int)Samples[i].len);
 		if (Samples[i].len == 0)
 			continue;
 		Samples[i].data = (unsigned char *)malloc(Samples[i].len);
@@ -224,13 +226,14 @@ int init_new();
 
 void cleanup_new();
 
-int main( int argc, char* args[] )
+int main( int argc, char *args[])
 {
 	if( argc > 1 )
 	{
 		load_mod(args[1]);
 	}
 
+	printf("INIT now\n");
     //Initialize
     if( init_new() == 0 )
     {
@@ -247,7 +250,8 @@ int main( int argc, char* args[] )
 
     //Apply the background
     apply_surface( 0, 0, background, screen, NULL );
-
+	SDL_UpdateWindowSurface( window );
+/*
     //Render the text
     message = TTF_RenderText_Solid( font, "Up/Down to select the sound", textColor );
 
@@ -292,12 +296,12 @@ int main( int argc, char* args[] )
 
     //Free the message
     SDL_FreeSurface( message );
-
+*/
     //Update the screen
-    if( SDL_Flip( screen ) == -1 )
-    {
-        return 1;
-    }
+ //   if( SDL_Flip( screen ) == -1 )
+ //   {
+ //       return 1;
+ //   }
 
     main_loop_new();
     //Free surfaces, fonts and sounds
@@ -418,6 +422,8 @@ int main_loop_new()
 	        //While there's events to handle
 		while( SDL_WaitEvent( &event ) )
         	{
+				if(event.type == SDLK_SPACE) {
+				}
 	            //If a key was pressed
 		        if(event.type == SDL_KEYUP)
 			{
@@ -430,6 +436,10 @@ int main_loop_new()
 			int sl = -1;
 			switch(event.key.keysym.sym)
 			{
+			case SDLK_SPACE:
+					apply_surface( 0, 0, background, screen, NULL );
+					SDL_UpdateWindowSurface( window );
+			break;
 			case SDLK_UP: if(smp<30) smp++; break;
 			case SDLK_DOWN: if(smp>0) smp--; break;
 			case SDLK_q:sl=12; break;
@@ -469,6 +479,7 @@ int main_loop_new()
 			case SDLK_b:sl=15; break;
 			case SDLK_n:sl=16; break;
 			case SDLK_m:sl=17; break;*/
+			default: break;
 			}
 
 			if(sl!=-1) {
@@ -485,7 +496,9 @@ int main_loop_new()
   			}
 		}
 	}
+	SDL_PauseAudio(1);
 	SDL_CloseAudio();
+	return 1;
 }
 
 
@@ -495,10 +508,10 @@ void cleanup_new()
     SDL_FreeSurface( background );
 
     //Close the font
-    TTF_CloseFont( font );
+    //TTF_CloseFont( font );
 
     //Quit SDL_ttf
-    TTF_Quit();
+    //TTF_Quit();
 
     //Quit SDL
     SDL_Quit();
@@ -508,22 +521,23 @@ int load_files_new()
 {
 	int i=0;
     //Load the background image
-    background = load_image( "data/background.png" );
+    background = load_image( "data/background.bmp" );
 
     //Open the font
-    font = TTF_OpenFont( "data/lazy.ttf", 30 );
+//    font = TTF_OpenFont( "data/lazy.ttf", 30 );
 
     //If there was a problem in loading the background
     if( background == NULL )
     {
-        return 0;
+        printf("No background loaded\n");
+		return 0;
     }
 
     //If there was an error in loading the font
-    if( font == NULL )
-    {
-        return 0;
-    }
+  //  if( font == NULL )
+  //  {
+   //     return 0;
+   // }
 
     //If everything loaded fine
     return 1;
@@ -596,9 +610,19 @@ int init_new()
   		return 0;
 	}
 
+    window = SDL_CreateWindow("SDL2 Window",
+                                          SDL_WINDOWPOS_CENTERED,
+                                          SDL_WINDOWPOS_CENTERED,
+                                          SCREEN_WIDTH, SCREEN_HEIGHT,
+                                          SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
+	if( window == NULL) {
+		return 0;
+	}
+	
     //Set up the screen
-    screen = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP, SDL_SWSURFACE );
+//    screen = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP, SDL_FULLSCREEN );
+    screen = SDL_GetWindowSurface(window);
 
     //If there was an error in setting up the screen
     if( screen == NULL )
@@ -607,10 +631,10 @@ int init_new()
     }
 
     //Initialize SDL_ttf
-    if( TTF_Init() == -1 )
-    {
-        return 0;
-    }
+//    if( TTF_Init() == -1 )
+//    {
+//        return 0;
+//    }
 
 	SDL_AudioSpec want, have;
 
@@ -660,7 +684,7 @@ else {
     }
     */
     //Set the window caption
-    SDL_WM_SetCaption( "Jam Tracker", NULL );
+ //   SDL_WM_SetCaption("Jam Tracker", NULL);
 
     //If everything initialized fine
     return 1;
