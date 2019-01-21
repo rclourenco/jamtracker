@@ -1,1 +1,1 @@
-gcc -o jamtracker jamtracker.c -lSDL -lSDL_ttf -lSDL_image
+gcc -o jamtracker jamtracker.c `sdl2-config --libs`

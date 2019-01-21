@@ -8,10 +8,11 @@ and may not be redistributed without written permission.*/
 //#include <SDL/SDL_mixer.h>
 #include <stdio.h>
 #include <strings.h>
+#include "jamtracker.h"
 
 //Screen attributes
 const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_HEIGHT = 500;
 const int SCREEN_BPP = 0;
 
 struct {
@@ -19,6 +20,7 @@ struct {
 	size_t loop_start;
 	size_t loop_end;
 	uint8_t vol;
+	uint8_t tune;
 	unsigned char *data;
 } Samples[31];
 
@@ -31,26 +33,55 @@ struct {
 	unsigned char id[4];
 } ModSeq;
 
+ModPattern Pattern[127];
+
+uint8_t LoadedPatterns = 0;
+
 struct _SamplerStatus {
 	uint32_t phase[8];
 	int sample[8];
 	uint32_t pointer[8];
 } SamplerGlobalStatus;
 
+SequencerData seqdta;
+
 SDL_Window *window = NULL;
 //The surfaces
-SDL_Surface *background = NULL;
-SDL_Surface *message = NULL;
-SDL_Surface *screen = NULL;
+SDL_Texture *background = NULL;
+SDL_Renderer *renderer = NULL;
 
 //The event structure
 SDL_Event event;
+
+Uint32 SequencerEvent;
 
 //The font
 //TTF_Font *font = NULL;
 
 //The color of the font
 SDL_Color textColor = { 0, 0, 0 };
+
+int textx = 0;
+int texty = 0;
+unsigned char textbuffer[80*25];
+
+void textwrite(char *str)
+{
+	while(*str) {
+		if(*str=='\n') {
+			textx=0;
+			texty++;
+		} else {
+			textbuffer[texty*80+textx]=*str;
+			textx++;
+			if (textx>80) {
+				textx=0;
+				texty++;
+			}
+		}
+		str++;
+	}
+}
 
 //The music that will be played
 
@@ -60,55 +91,61 @@ SDL_Color textColor = { 0, 0, 0 };
 
 SDL_mutex *mutex;
 
-SDL_Surface *load_image(const char *filename )
+SDL_Texture *load_image(const char *filename )
 {
-    //The image that's loaded
-    SDL_Surface* loadedImage = NULL;
-
-    //The optimized surface that will be used
-    SDL_Surface* optimizedImage = NULL;
-
-    //Load the image
-    loadedImage = SDL_LoadBMP( filename );
-
-    //If the image loaded
-    if( loadedImage != NULL )
-    {
-		printf("Loaded... %p\n", screen);
-        //Create an optimized surface
-        optimizedImage = SDL_ConvertSurface( loadedImage, screen->format, 0 );
-
-        //Free the old surface
-//        SDL_FreeSurface( loadedImage );
-
-        //If the surface was optimized
-        if( optimizedImage != NULL )
-        {
-            //Color key surface
-          //  SDL_SetColorKey( optimizedImage, SDL_SRCCOLORKEY, SDL_MapRGB( optimizedImage->format, 0, 0xFF, 0xFF ) );
-        }
-    } 
-
-
-    //Return the optimized surface
-    return loadedImage;
+	SDL_Surface *surf = SDL_LoadBMP( filename );
+    
+	if( surf == NULL )
+	{
+		printf("No image loaded\n");
+		return 0;
+	}
+    
+ 	SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surf);
+	SDL_FreeSurface(surf);
+	
+	return texture;
 }
 
-void apply_surface( int x, int y, SDL_Surface* source, SDL_Surface* destination, SDL_Rect* clip )
+void apply_surface()
 {
-	int r;
-    //Holds offsets
-    SDL_Rect offset;
+	#define SHAPE_W 16
+	#define SHAPE_H 16
+	#define SHAPE_SIZE 16
+	int i,j;
+	SDL_Rect SrcR;
+	SDL_Rect DestR;
 
-    //Get offsets
-    offset.x = x;
-    offset.y = y;
+	
+	SDL_RenderClear(renderer);
+	for (i=0;i<80;i++) {
+		for(j=0;j<25;j++) {
+			unsigned char v = textbuffer[j*80+i];
+			if (v>='A' && v<='Z')
+				v = v - 'A' + 33;
+			else if(v>='a' && v<= 'z')
+				v = v - 'a' + 33;
+			else
+				v = 0;
+			
+			int cx = v%10;
+			int cy = (v/10);
 
-    //Blit
-    r = SDL_BlitSurface( source, clip, destination, &offset );
-	printf("Blit r: %d\n", r);
-//	SDL_FillRect(screen, &screen->clip_rect, SDL_MapRGB(screen->format, 100, 0, 0));
-//	SDL_Flip(screen);
+			SrcR.x = cx*32;
+ 			SrcR.y = cy*25;
+			SrcR.w = 32;
+			SrcR.h = 25;
+
+			DestR.x = i*32;
+			DestR.y = j*25;
+			DestR.w = 32;
+			DestR.h = 25;
+
+			SDL_RenderCopy(renderer, background, &SrcR, &DestR);
+		}
+	}
+	SDL_RenderPresent(renderer);
+
 }
 
 int load_mod(char *modfile)
@@ -170,6 +207,7 @@ int load_mod(char *modfile)
 		Samples[i].len = slen;
 		Samples[i].data = NULL;
 		Samples[i].vol  = smpdef[25];
+		Samples[i].tune = smpdef[24]&0xF;
 		if (Samples[i].vol == 0) {
 			Samples[i].vol = 32;
 		}
@@ -196,7 +234,18 @@ int load_mod(char *modfile)
 	}
 	max++;
 	printf("Max %d\n", max);
-	fseek(fp, max*64*4*4, SEEK_CUR);
+	if (max>127) {
+		fprintf(stderr, "Unsupported number o patterns\n");
+		goto failure;
+	}
+	
+	for (i=0; i<max; i++) {
+		if (fread(&Pattern[i], sizeof(ModPattern), 1, fp)!=1) {
+			goto failure;
+		}
+	}
+	LoadedPatterns=max;
+	
 	printf("L: %ld\n", ftell(fp));
 	for(i=0;i<nSamples;i++) {
 		printf("S: %u\n", (unsigned int)Samples[i].len);
@@ -232,6 +281,29 @@ int main( int argc, char *args[])
 	{
 		load_mod(args[1]);
 	}
+	
+	/*
+	debug dump pattern
+	*/
+	if (LoadedPatterns>0) {
+		int i;
+		printf("------- Pattern 1 --------\n");
+		for (i=0;i<64;i++) {
+			int j=0;
+			for (j=0;j<4;j++) {
+				ChannelItem *p = &(Pattern[0].item[i*4+j]);
+				dump_channel_item(p);
+				printf(" - ");
+			}
+			printf("\n");
+		}
+		printf("--------------------------\n");
+	}
+	
+	seqdta.patterns = Pattern;
+	seqdta.npat = LoadedPatterns;
+	seqdta.seq  = ModSeq.seq;
+	seqdta.nseq = ModSeq.np;
 
 	printf("INIT now\n");
     //Initialize
@@ -239,6 +311,8 @@ int main( int argc, char *args[])
     {
         return 1;
     }
+    
+    SequencerEvent = SDL_RegisterEvents(1);
 
     //Load the files
     if( load_files_new() == 0 )
@@ -247,65 +321,11 @@ int main( int argc, char *args[])
     }
 
     printf("Ready!\n");
-
-    //Apply the background
-    apply_surface( 0, 0, background, screen, NULL );
-	SDL_UpdateWindowSurface( window );
-/*
-    //Render the text
-    message = TTF_RenderText_Solid( font, "Up/Down to select the sound", textColor );
-
-    //If there was an error in rendering the text
-    if( message == NULL )
-    {
-        return 1;
-    }
-
-    //Show the message on the screen
-    apply_surface( ( SCREEN_WIDTH - message->w ) / 2, 100, message, screen, NULL );
-
-    //Free the message
-    SDL_FreeSurface( message );
-
-    //Render the text
-    message = TTF_RenderText_Solid( font, "Letters to play the notes", textColor );
-
-    //If there was an error in rendering the text
-    if( message == NULL )
-    {
-        return 1;
-    }
-
-    //Show the message on the screen
-    apply_surface( ( SCREEN_WIDTH - message->w ) / 2, 200, message, screen, NULL );
-
-    //Free the message
-    SDL_FreeSurface( message );
-
-    //Render the text
-    message = TTF_RenderText_Solid( font, "zSxDcvGbHnJm - q2w3er5t6y7ui9o0p", textColor );
-
-    //If there was an error in rendering the text
-    if( message == NULL )
-    {
-        return 1;
-    }
-
-    //Show the message on the screen
-    apply_surface( ( SCREEN_WIDTH - message->w ) / 2, 300, message, screen, NULL );
-
-    //Free the message
-    SDL_FreeSurface( message );
-*/
-    //Update the screen
- //   if( SDL_Flip( screen ) == -1 )
- //   {
- //       return 1;
- //   }
+    textwrite("JAMTRACKER");
+    apply_surface();
 
     main_loop_new();
-    //Free surfaces, fonts and sounds
-    //then quit SDL_ttf and SDL
+
     cleanup_new();
 
     return 0;
@@ -374,6 +394,56 @@ void set_note(uint8_t note, uint8_t smp)
 	}
 }
 
+void set_note_ex(uint8_t note[8], uint8_t smp[8])
+{
+	uint32_t p[8];
+	int i;
+
+	for (i=0;i<8;i++) {
+		if (note[i]==0) {
+			p[i]=0;
+			continue;
+		}
+
+		uint8_t octave = (note[i]/12);
+		float phase;
+
+		if (octave > 5)
+		{
+			octave = 5;
+		}
+
+		phase = (freq_tab[note[i]%12]*oct_tab[octave]/261.63);
+
+		p[i] = phase*0x10000;
+			
+	}
+
+	/*
+	for(i=0;i<4;i++) {
+		printf(" # %08X - %02X", p[i], smp[i]);
+	}
+	*/
+
+	if (SDL_LockMutex(mutex) == 0) {
+		for (i=0;i<8;i++) {
+		
+			if (p[i]==0) {
+				continue;
+			}
+			SamplerGlobalStatus.phase[i]   = p[i];
+			SamplerGlobalStatus.sample[i]  = smp[i];
+			SamplerGlobalStatus.pointer[i] = 0;
+		}
+  		/* Do stuff while mutex is locked */
+  		SDL_UnlockMutex(mutex);
+	} else {
+  		fprintf(stderr, "Couldn't lock mutex\n");
+	}
+}
+
+
+
 void set_note_off()
 {
 	if (SDL_LockMutex(mutex) == 0) {
@@ -403,7 +473,8 @@ void get_sampler_status(struct _SamplerStatus *x)
 void update_sampler_pointers(struct _SamplerStatus *x)
 {
 	if (SDL_LockMutex(mutex) == 0) {
-		memcpy(SamplerGlobalStatus.pointer, x->pointer, sizeof(int)*8 );
+		memcpy(&SamplerGlobalStatus, x, sizeof(struct _SamplerStatus) );
+		//memcpy(SamplerGlobalStatus.pointer, x->pointer, sizeof(int)*8 );
   		/* Do stuff while mutex is locked */
   		SDL_UnlockMutex(mutex);
 	} else {
@@ -416,29 +487,29 @@ int main_loop_new()
 	int quit = 0;
 	set_sample(-1);
  	SDL_PauseAudio(0); /* start audio playing. */
-	int smp = 0;	
+	int smp = 0;
+	start_sequencer(&seqdta);	
 	while(!quit)
 	{
 	        //While there's events to handle
 		while( SDL_WaitEvent( &event ) )
         	{
-				if(event.type == SDLK_SPACE) {
-				}
+			if(event.type == SequencerEvent) {
+				printf(">>> %X\n", event.user.code);
+			}
 	            //If a key was pressed
 		        if(event.type == SDL_KEYUP)
 			{
 				set_note_off();
 			}
 
-        	    	if( event.type == SDL_KEYDOWN )
+        	    	if( event.type == SDL_KEYDOWN && event.key.repeat == 0)
             		{
 
 			int sl = -1;
 			switch(event.key.keysym.sym)
 			{
 			case SDLK_SPACE:
-					apply_surface( 0, 0, background, screen, NULL );
-					SDL_UpdateWindowSurface( window );
 			break;
 			case SDLK_UP: if(smp<30) smp++; break;
 			case SDLK_DOWN: if(smp>0) smp--; break;
@@ -505,7 +576,7 @@ int main_loop_new()
 void cleanup_new()
 {
     //Free the surfaces
-    SDL_FreeSurface( background );
+    SDL_DestroyTexture( background );
 
     //Close the font
     //TTF_CloseFont( font );
@@ -519,19 +590,15 @@ void cleanup_new()
 
 int load_files_new()
 {
-	int i=0;
-    //Load the background image
-    background = load_image( "data/background.bmp" );
+    //Load the background texture
+     background = load_image( "data/font_x.bmp" );
 
-    //Open the font
-//    font = TTF_OpenFont( "data/lazy.ttf", 30 );
-
-    //If there was a problem in loading the background
-    if( background == NULL )
-    {
-        printf("No background loaded\n");
+ 	if( background == NULL )
+	{
+		printf("No background loaded\n");
 		return 0;
-    }
+	}
+    
 
     //If there was an error in loading the font
   //  if( font == NULL )
@@ -553,17 +620,19 @@ void audio_callback(void*  userdata, Uint8* stream, int len)
 
 	for(i=0;i<len;i++) 
 	{
-		int c = statuscpy.sample[0];
-		uint32_t bp = statuscpy.pointer[0] >> 16;
-		uint32_t ph = statuscpy.phase[0];
-		uint32_t le, ls;
-		float vol = 1.0;
-		int a = 0;
+		int s;
+		int total = 0;
+		for (s = 0; s<8;s++) {
+			int c = statuscpy.sample[s];
+			uint32_t bp = statuscpy.pointer[s] >> 16;
+			uint32_t ph = statuscpy.phase[s];
+			uint32_t le, ls;
+			float vol = 1.0;
+			int a = 0;
 
-		if (c < 0 || Samples[c].len < 1 || bp >= Samples[c].len) {
-			stream[i] = 128;
-			continue;
-		}
+			if (c < 0 || Samples[c].len < 1 || bp >= Samples[c].len) {
+				continue;
+			}
 
 		/*
 		if (bp >= Samples[c].len)
@@ -572,24 +641,30 @@ void audio_callback(void*  userdata, Uint8* stream, int len)
 		}
 		*/
 
-		vol = Samples[c].vol;
-		a = ((char)Samples[c].data[bp]) * (vol/64.0);
+			vol = Samples[c].vol;
+			total += ((char)Samples[c].data[bp]) * (vol/64.0);
 
-		if (a < -128) {
-			a = -128;
-		}
-		if (a > 127) {
-			a = 127;
+			
+			statuscpy.pointer[s]+=statuscpy.phase[s];
+			ls = Samples[c].loop_start << 16;
+			le = Samples[c].loop_end   << 16;
+
+			if(le > ls && statuscpy.pointer[s] >= le ) {
+				statuscpy.pointer[s] = ls + (statuscpy.pointer[s]-le);
+			}
+
 		}
 
-		stream[i] = a+128;
-		statuscpy.pointer[0]+=statuscpy.phase[0];
-		ls = Samples[c].loop_start << 16;
-		le = Samples[c].loop_end   << 16;
-
-		if(le > ls && statuscpy.pointer[0] >= le ) {
-			statuscpy.pointer[0] = ls + (statuscpy.pointer[0]-le);
+		if (total < -128) {
+			total = -128;
 		}
+		if (total > 127) {
+				total = 127;
+		}
+
+		stream[i] = total+128;
+		
+		
 	}
 
 	update_sampler_pointers(&statuscpy);
@@ -610,7 +685,7 @@ int init_new()
   		return 0;
 	}
 
-    window = SDL_CreateWindow("SDL2 Window",
+    window = SDL_CreateWindow("JamTracker I",
                                           SDL_WINDOWPOS_CENTERED,
                                           SDL_WINDOWPOS_CENTERED,
                                           SCREEN_WIDTH, SCREEN_HEIGHT,
@@ -620,12 +695,11 @@ int init_new()
 		return 0;
 	}
 	
-    //Set up the screen
-//    screen = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP, SDL_FULLSCREEN );
-    screen = SDL_GetWindowSurface(window);
-
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	
+ 
     //If there was an error in setting up the screen
-    if( screen == NULL )
+    if( renderer == NULL )
     {
         return 0;
     }
@@ -635,6 +709,13 @@ int init_new()
 //    {
 //        return 0;
 //    }
+
+	int i, count = SDL_GetNumAudioDevices(0);
+
+	for (i = 0; i < count; ++i) {
+    		SDL_Log("Audio device %d: %s", i, SDL_GetAudioDeviceName(i, 0));
+	}
+
 
 	SDL_AudioSpec want, have;
 
@@ -655,38 +736,6 @@ if (SDL_OpenAudio(&want, &have) < 0) {
     }
 }
 
-    //Initialize SDL_mixer
-    /*
-    if( Mix_OpenAudio( 22050, AUDIO_S8, 1, 1024 ) == -1 )
-    {
-        return false;
-    } else {
-int numtimesopened, frequency, channels;
-Uint16 format;
-numtimesopened=Mix_QuerySpec(&frequency, &format, &channels);
-if(!numtimesopened) {
-    printf("Mix_QuerySpec: %s\n",Mix_GetError());
-}
-else {
-    char *format_str="Unknown";
-    switch(format) {
-        case AUDIO_U8: format_str="U8"; break;
-        case AUDIO_S8: format_str="S8"; break;
-        case AUDIO_U16LSB: format_str="U16LSB"; break;
-        case AUDIO_S16LSB: format_str="S16LSB"; break;
-        case AUDIO_U16MSB: format_str="U16MSB"; break;
-        case AUDIO_S16MSB: format_str="S16MSB"; break;
-    }
-    printf("opened=%d times  frequency=%dHz  format=%s  channels=%d",
-            numtimesopened, frequency, format_str, channels);
-}
-
-    }
-    */
-    //Set the window caption
- //   SDL_WM_SetCaption("Jam Tracker", NULL);
-
-    //If everything initialized fine
     return 1;
 }
 
