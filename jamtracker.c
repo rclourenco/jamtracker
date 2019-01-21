@@ -44,6 +44,7 @@ struct _SamplerStatus {
 } SamplerGlobalStatus;
 
 SequencerData seqdta;
+char ModName[21];
 
 SDL_Window *window = NULL;
 //The surfaces
@@ -67,6 +68,8 @@ unsigned char textbuffer[80*25];
 
 void textwrite(char *str)
 {
+	int scroll_start = 3;
+	int scroll_len = 19-scroll_start;
 	while(*str) {
 		if(*str=='\n') {
 			textx=0;
@@ -74,11 +77,19 @@ void textwrite(char *str)
 		} else {
 			textbuffer[texty*80+textx]=*str;
 			textx++;
-			if (textx>80) {
+			if (textx>=80) {
 				textx=0;
 				texty++;
 			}
 		}
+
+		if(texty>=20) {
+			memmove(&textbuffer[scroll_start*80], &textbuffer[(scroll_start+1)*80], 80*scroll_len*sizeof(unsigned char));
+			memset(&textbuffer[19*80], 0, 80*sizeof(unsigned char));
+			texty=19;
+			textx=0;
+		}
+
 		str++;
 	}
 }
@@ -125,9 +136,16 @@ void apply_surface()
 				v = v - 'A' + 33;
 			else if(v>='a' && v<= 'z')
 				v = v - 'a' + 33;
-			else
-				v = 0;
-			
+			else if(v>='0' && v<= '9')
+				v = v - '0' + 16;
+			else {
+				switch(v) {
+				case '-': v=13; break;
+				case '#': v=11; break;
+				default:
+					v = 0;
+				}
+			}
 			int cx = v%10;
 			int cy = (v/10);
 
@@ -148,10 +166,32 @@ void apply_surface()
 
 }
 
+void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
+{
+	char data[128];
+	int j;
+	for (j=0;j<4;j++) {
+		ChannelItem *p = &(Pattern[pat].item[pos*4+j]);
+
+		dump_channel_item_str(data, p);
+		textwrite(" ");
+		textwrite(data);
+		if(j%2) {
+			textwrite("\n");
+		} else {
+			textwrite(" ");
+		}
+	}
+	textwrite("\n");
+//	sprintf(data, "%d %d %d\n", seq, pat, pos);
+//	printf(">>> %s", data);
+//	textwrite(data);
+	apply_surface();
+}
+
 int load_mod(char *modfile)
 {
 	char modtype[5];
-	char modname[21];
 	int smpn = 15;
 	int i = 0;
 	int max = 0;
@@ -170,13 +210,13 @@ int load_mod(char *modfile)
 	}
 	fseek(fp, 0, SEEK_SET);
 
-	if(fread(modname, 20, 1, fp)!=1)
-	{
+	if(fread(ModName, 20, 1, fp)!=1) {
+	
 		goto failure;
 	}
 
 	modtype[4]='\0';
-	modname[20]='\0';
+	ModName[20]='\0';
 
 	if (modtype[0]=='M' && modtype[1]=='.' && modtype[2]=='K' && modtype[3]=='.') {
 		smpn=31;
@@ -186,7 +226,7 @@ int load_mod(char *modfile)
 	}
 
 	printf("ModType: %s\n", modtype);
-	printf("Modname: %s\n", modname);
+	printf("Modname: %s\n", ModName);
 	for(i=0;i<smpn;i++) {
 		char smpname[23];
 		unsigned char smpdef[30];
@@ -321,7 +361,20 @@ int main( int argc, char *args[])
     }
 
     printf("Ready!\n");
-    textwrite("JAMTRACKER");
+    textwrite("   # JAMTRACKER #\n\n");
+	int i;
+
+	for(i=19;i>=0; i--) {
+		if(ModName[i]==32) {
+			ModName[i]=0;
+		} else if (ModName[i]>0) {
+			break;
+		}
+	}
+	int ns = strlen(ModName);
+	char tmp[128];
+	sprintf(tmp, "%*s\n", ns+ns/4, ModName);
+	textwrite(tmp);
     apply_surface();
 
     main_loop_new();
@@ -364,7 +417,7 @@ float freq_tab[12]={
 	220.00, 233.08, 246.94
 };
 
-float oct_tab[12]={1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0};
+float oct_tab[12]={0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0};
 
 void set_note(uint8_t note, uint8_t smp)
 {
@@ -411,6 +464,10 @@ void set_note_ex(uint8_t note[8], uint8_t smp[8])
 		if (octave > 5)
 		{
 			octave = 5;
+		}
+
+		if (octave < 0) {
+			octave = 0;
 		}
 
 		phase = (freq_tab[note[i]%12]*oct_tab[octave]/261.63);
@@ -495,7 +552,12 @@ int main_loop_new()
 		while( SDL_WaitEvent( &event ) )
         	{
 			if(event.type == SequencerEvent) {
-				printf(">>> %X\n", event.user.code);
+				//printf(">>> %X\n", event.user.code);
+				update_status(
+								(event.user.code>>16) & 0xFF,
+								(event.user.code>>8) & 0xFF,
+								event.user.code & 0xFF
+							);
 			}
 	            //If a key was pressed
 		        if(event.type == SDL_KEYUP)

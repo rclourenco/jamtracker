@@ -37,6 +37,7 @@ static int SequencerThread(void *ptr)
 
 	int n=0;
 	uint8_t ticks = 6;
+	uint8_t delta = 20;
 	while(1) {
 		int i,j;
 		int pat = s->seq[n];
@@ -50,7 +51,7 @@ static int SequencerThread(void *ptr)
 				extract_channel_data(p, &effect[j], &evalue[j], &instru[j], &pitch[j]);
 					
 				if(pitch[j]>0 && instru[j]>0) {
-					pitch[j] -= 36;
+					pitch[j] -= 24;
 					instru[j]--;
 				}
 				
@@ -58,9 +59,11 @@ static int SequencerThread(void *ptr)
 				case 0xF:
 					if(evalue[j]>1 && evalue[j]<32) {
 						ticks = evalue[j];
+						delta = 20;
 					}
 					else if(evalue[j]>=32) {
-						ticks = evalue[j]*0.4;
+						delta = 1000/(evalue[j]*0.4);
+						//ticks = 4;
 					}
 					break;
 				case 0xD:
@@ -72,7 +75,7 @@ static int SequencerThread(void *ptr)
 			push_event(n, pat, i);
 			printf("\n");
         		//printf("\nThread counter: %d", i);
-        		SDL_Delay(20*ticks);
+        		SDL_Delay(delta*ticks);
     		}
     		n++;
     		if(n>s->nseq)
@@ -156,5 +159,23 @@ void dump_channel_item(ChannelItem *p)
 		
 	}
 	printf("%s %02X %01X%02X", name, instru, effect, evalue);
+}
+
+void dump_channel_item_str(char *dest, ChannelItem *p)
+{
+	uint8_t effect = p->data[2]&0x0F;
+	uint8_t evalue = p->data[3];
+	uint8_t instru = ((p->data[0]&0xF0)) | ((p->data[2]&0xF0)>>4);
+	uint16_t period = ((p->data[0]&0x0F) << 8) | p->data[1];
+	
+	uint8_t pitch = note_period_tab[period];
+	unsigned char name[4]={'-','-','-', '\0'};
+	if (pitch>0) {
+		name[2] = '0'+pitch/12-1;
+		name[0] = nlabel[(pitch%12)*2];
+		name[1] = nlabel[(pitch%12)*2+1];
+		
+	}
+	sprintf(dest, "%s%02X%01X%02X", name, instru, effect, evalue);
 }
 
