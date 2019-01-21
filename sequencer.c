@@ -38,15 +38,15 @@ static int SequencerThread(void *ptr)
 	int n=0;
 	uint8_t ticks = 6;
 	uint8_t delta = 20;
+	unsigned int currentTime = SDL_GetTicks();
+	unsigned int lastTime = currentTime;
 	while(1) {
 		int i,j;
 		int pat = s->seq[n];
 		printf("<<<<<<< Pattern %3d >>>>>>>\n", pat);
-    		for (i = 0; i < 64; ++i) {
-    			for (j=0;j<4;j++) {
+    	for (i = 0; i < 64; ++i) {
+    		for (j=0;j<4;j++) {
 				ChannelItem *p = &(s->patterns[pat].item[i*4+j]);
-				dump_channel_item(p);
-				printf(" - ");
 				
 				extract_channel_data(p, &effect[j], &evalue[j], &instru[j], &pitch[j]);
 					
@@ -73,14 +73,20 @@ static int SequencerThread(void *ptr)
 			
 			set_note_ex(pitch, instru);
 			push_event(n, pat, i);
-			printf("\n");
-        		//printf("\nThread counter: %d", i);
-        		SDL_Delay(delta*ticks);
+		
+			currentTime = SDL_GetTicks();
+			int delay = delta*ticks - SDL_TICKS_PASSED(lastTime, currentTime);
+			lastTime = currentTime;
+        	//printf("\nDelay: %d", delay);
+			if (delay>0) {
+				SDL_Delay(delay);
+        		//SDL_Delay(delta*ticks);
     		}
-    		n++;
-    		if(n>s->nseq)
-    			n=0;
-    	}
+		}
+    	n++;
+    	if(n>s->nseq)
+    		n=0;
+    }
 
     return cnt;
 }

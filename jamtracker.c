@@ -373,7 +373,7 @@ int main( int argc, char *args[])
 	}
 	int ns = strlen(ModName);
 	char tmp[128];
-	sprintf(tmp, "%*s\n", ns+ns/4, ModName);
+	sprintf(tmp, "%*s\n", ns+ns/2, ModName);
 	textwrite(tmp);
     apply_surface();
 
