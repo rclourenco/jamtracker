@@ -15,14 +15,7 @@ const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 500;
 const int SCREEN_BPP = 0;
 
-struct {
-	size_t len;
-	size_t loop_start;
-	size_t loop_end;
-	uint8_t vol;
-	uint8_t tune;
-	unsigned char *data;
-} Samples[31];
+struct _Sample Samples[31];
 
 size_t nSamples = 0;
 
@@ -37,11 +30,7 @@ ModPattern Pattern[127];
 
 uint8_t LoadedPatterns = 0;
 
-struct _SamplerStatus {
-	uint32_t phase[8];
-	int sample[8];
-	uint32_t pointer[8];
-} SamplerGlobalStatus;
+struct _SamplerStatus SamplerGlobalStatus;
 
 SequencerData seqdta;
 char ModName[21];
@@ -56,6 +45,7 @@ SDL_Event event;
 
 Uint32 SequencerEvent;
 
+Pipe audiostream;
 //The font
 //TTF_Font *font = NULL;
 
@@ -567,7 +557,7 @@ int main_loop_new()
 	            //If a key was pressed
 		        if(event.type == SDL_KEYUP)
 			{
-				set_note_off();
+				//set_note_off();
 			}
 
         	    	if( event.type == SDL_KEYDOWN && event.key.repeat == 0)
@@ -621,7 +611,7 @@ int main_loop_new()
 			}
 
 			if(sl!=-1) {
-				set_note(sl, smp);
+				//set_note(sl, smp);
 			}
 			}
 
@@ -675,6 +665,19 @@ int load_files_new()
 
     //If everything loaded fine
     return 1;
+}
+
+void audio_callback2(void *userdata, Uint8 *stream, int len)
+{
+	size_t i;
+	size_t wrt;
+
+        wrt = PipeReceive(&audiostream, stream, len);
+
+	for(i=wrt; i<len; i++) {
+		stream[i]=128;
+	}	
+
 }
 
 struct _SamplerStatus statuscpy;
@@ -791,11 +794,13 @@ int init_new()
 	want.format = AUDIO_U8;
 	want.channels = 1;
 	want.samples = 1024;
-	want.callback = audio_callback; /* you wrote this function elsewhere -- see SDL_AudioSpec for details */
+	//want.callback = audio_callback; /* you wrote this function elsewhere -- see SDL_AudioSpec for details */
+	want.callback = audio_callback2;
+//	SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
 if (SDL_OpenAudio(&want, &have) < 0) {
     printf("Failed to open audio: %s\n", SDL_GetError());
-    return 1;
+    return 0;
 } else {
     if (have.format != want.format) {
         printf("We didn't get AUDIO_U8 audio format.\n");
@@ -803,6 +808,7 @@ if (SDL_OpenAudio(&want, &have) < 0) {
     }
 }
 
+    PipeInit(&audiostream);
     return 1;
 }
 
