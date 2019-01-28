@@ -372,5 +372,5 @@ int generate_audio(size_t ns)
 			//SDL_QueueAudio(1, audbuffer, len);
 		}
 	}
-
+	return 1;
 }
