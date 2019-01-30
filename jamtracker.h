@@ -12,8 +12,9 @@ struct _Sample {
 
 struct _SamplerStatus {
 	uint32_t phase[8];
-	int sample[8];
+	int      sample[8];
 	uint32_t pointer[8];
+	uint8_t  volume[8];
 };
 
 typedef struct {

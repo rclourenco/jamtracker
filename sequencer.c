@@ -11,7 +11,7 @@ void extract_channel_data(
 	uint8_t *instru,
 	uint8_t *pitch );
 
-void set_note_ex2(uint8_t note[8], uint8_t smp[8]);
+void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8]);
 int generate_audio(size_t ns);
 
 extern struct _SamplerStatus SamplerGlobalStatus;
@@ -36,18 +36,18 @@ void PipeSend(Pipe *pipe, uint8_t *src, size_t len)
 {
 	size_t i=0;
 	SDL_LockMutex(pipe->lock);
-	printf("Data To Write: %lu\n", len);
+//	printf("Data To Write: %lu\n", len);
 	while(i<len)
 	{
 		size_t space = PIPESIZE - pipe->len;
 	        if(space==0)
 			pipe->notfull = SDL_FALSE;	
 		if(pipe->notfull==SDL_FALSE) {
-			printf("<FULL>\n");
+//			printf("<FULL>\n");
 			SDL_CondWait(pipe->cond, pipe->lock);
 		}
 		space = PIPESIZE - pipe->len;
-		printf("Writing %lu (%lu)\n", len-i, pipe->len);
+//		printf("Writing %lu (%lu)\n", len-i, pipe->len);
 		while(space && i < len) {
 			pipe->buffer[pipe->wp]=src[i];
 			space--;
@@ -55,7 +55,7 @@ void PipeSend(Pipe *pipe, uint8_t *src, size_t len)
 			pipe->len++;
 			i++;
 		}
-		printf("After: %lu (%lu)\n", len-i, pipe->len);
+//		printf("After: %lu (%lu)\n", len-i, pipe->len);
 	}
 	SDL_UnlockMutex(pipe->lock);
 
@@ -65,7 +65,7 @@ size_t PipeReceive(Pipe *pipe, uint8_t *dest, size_t len)
 {
 	size_t rd = 0;
 	SDL_LockMutex(pipe->lock);
-	printf(">>>>>>>>>>> Reading: %lu\n", len);
+//	printf(">>>>>>>>>>> Reading: %lu\n", len);
 	while(len>0 && pipe->len>0) {
 		dest[rd] = pipe->buffer[pipe->rp];
 		pipe->rp = (pipe->rp+1) % PIPESIZE;
@@ -107,19 +107,36 @@ static int SequencerThread(void *ptr)
 	uint8_t effect[8] = {0,0,0,0, 0,0,0,0};
 	uint8_t evalue[8] = {0,0,0,0, 0,0,0,0};
 	uint8_t pitch[8]  = {0,0,0,0, 0,0,0,0};
-
-	int n=0;
+	uint8_t volume[8] = {0,0,0,0, 0,0,0,0};
+ 
+	int n=0, o_n=-1;
 	uint8_t ticks = 6;
 	uint8_t delta = 20;
 	unsigned int currentTime = SDL_GetTicks();
 	unsigned int lastTime = currentTime;
+	int i=0, j;
+	uint16_t cursor=0;
 	while(1) {
-		int i,j;
-		int pat = s->seq[n];
-		printf("<<<<<<< Pattern %3d >>>>>>>\n", pat);
-    	for (i = 0; i < 64; ++i) {
+		int j;
+		int next_step;
+		int pat;
+
+		if (cursor > s->nseq*64)
+    			cursor=0;
+
+		n = cursor>>6;
+		pat = s->seq[n];
+	        i = cursor&0x3F;
+
+		if (o_n != n) {
+			printf("<<<<<<< Pattern %3d, Pos: %3d >>>>>>>\n", pat, n);
+			o_n = n;
+		}
+
     		for (j=0;j<4;j++) {
+				volume[j]=0xFF;
 				ChannelItem *p = &(s->patterns[pat].item[i*4+j]);
+				next_step = i+1;
 				
 				extract_channel_data(p, &effect[j], &evalue[j], &instru[j], &pitch[j]);
 					
@@ -129,6 +146,8 @@ static int SequencerThread(void *ptr)
 				}
 				
 				switch (effect[j]) {
+				case 0x0:
+				break;
 				case 0xF:
 					if(evalue[j]>1 && evalue[j]<32) {
 						ticks = evalue[j];
@@ -139,16 +158,33 @@ static int SequencerThread(void *ptr)
 						//ticks = 4;
 					}
 					break;
-				case 0xD:
+				case 0xC:
+					if (evalue[j]<=64) {
+						volume[j]=evalue[j];
+					}
 				break;
+				case 0xD:
+					printf("HH %02X\n", evalue[j]);
+					int ncursor = ((evalue[j]&0xF0)>>4)*10 + (evalue[j]&0x0F);
+					if(ncursor==0) {
+						cursor = ((cursor>>6)+1)<<6;
+					} else {
+						cursor = ncursor;
+					}
+					cursor--;
+					//printf("<<<<<<< Pattern %3d, Pos: %3d >>>>>>>\n", pat, n);
+				break;
+				default:
+					printf("Fx: %X: %02X\n", effect[j], evalue[j]);
 				}
 			}
-			
-			set_note_ex2(pitch, instru);
+
+			set_note_ex2(pitch, instru, volume);
+		
 			push_event(n, pat, i);
 		
 			currentTime = SDL_GetTicks();
-			int delay = delta*ticks - SDL_TICKS_PASSED(lastTime, currentTime);
+			int delay = delta*ticks; // - SDL_TICKS_PASSED(lastTime, currentTime);
 			lastTime = currentTime;
 			size_t ns = (delay * 22.050);
 			generate_audio(ns);
@@ -157,10 +193,10 @@ static int SequencerThread(void *ptr)
 			//	SDL_Delay(delay);
         		//SDL_Delay(delta*ticks);
     			//}
-		}
-    	n++;
-    	if(n>s->nseq)
-    		n=0;
+			//
+
+			//i = next_step;
+    	cursor++;
     }
 
     return cnt;
@@ -260,7 +296,7 @@ void dump_channel_item_str(char *dest, ChannelItem *p)
 	sprintf(dest, "%s%02X%01X%02X", name, instru, effect, evalue);
 }
 
-void set_note_ex2(uint8_t note[8], uint8_t smp[8])
+void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8])
 {
 	uint32_t p[8];
 	int i;
@@ -298,11 +334,21 @@ void set_note_ex2(uint8_t note[8], uint8_t smp[8])
 	for (i=0;i<8;i++) {
 		
 		if (p[i]==0) {
+			if( volume[i]!=0xFF) {
+				SamplerGlobalStatus.volume[i]  = volume[i];
+			}
 			continue;
 		}
+
 		SamplerGlobalStatus.phase[i]   = p[i];
 		SamplerGlobalStatus.sample[i]  = smp[i];
 		SamplerGlobalStatus.pointer[i] = 0;
+		if (volume[i]==0xFF) {
+			SamplerGlobalStatus.volume[i]  = Samples[smp[i]].vol;
+		} 
+		else {
+			SamplerGlobalStatus.volume[i]  = volume[i];
+		}	
 	}
 }
 
@@ -344,7 +390,7 @@ int generate_audio(size_t ns)
 		}
 		*/
 
-				vol = Samples[c].vol;
+				vol = SamplerGlobalStatus.volume[s];
 				total += ((char)Samples[c].data[bp]) * (vol/64.0);
 
 			
