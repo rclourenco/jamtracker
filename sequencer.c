@@ -11,7 +11,7 @@ void extract_channel_data(
 	uint8_t *instru,
 	uint8_t *pitch );
 
-void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8]);
+void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8]);
 int generate_audio(size_t ns);
 
 extern struct _SamplerStatus SamplerGlobalStatus;
@@ -108,6 +108,7 @@ static int SequencerThread(void *ptr)
 	uint8_t evalue[8] = {0,0,0,0, 0,0,0,0};
 	uint8_t pitch[8]  = {0,0,0,0, 0,0,0,0};
 	uint8_t volume[8] = {0,0,0,0, 0,0,0,0};
+	uint32_t offset[8] = {1,1,1,1, 1,1,1,1};
  
 	int n=0, o_n=-1;
 	uint8_t ticks = 6;
@@ -135,6 +136,7 @@ static int SequencerThread(void *ptr)
 
     		for (j=0;j<4;j++) {
 				volume[j]=0xFF;
+				offset[j]=0x1; // disable
 				ChannelItem *p = &(s->patterns[pat].item[i*4+j]);
 				next_step = i+1;
 				
@@ -148,14 +150,21 @@ static int SequencerThread(void *ptr)
 				switch (effect[j]) {
 				case 0x0:
 				break;
+				case 0x9:
+					offset[j]=evalue[j]<<8;
+					printf("Offset %05X %05X\n", offset[j], evalue[j]);
+				break;
 				case 0xF:
 					if(evalue[j]>1 && evalue[j]<32) {
 						ticks = evalue[j];
-						delta = 20;
+						printf("Ticks: %d\n", evalue[j]);
+						//delta = 20;
 					}
 					else if(evalue[j]>=32) {
 						delta = 1000/(evalue[j]*0.4);
 						//ticks = 4;
+						printf("Bpm: %02X\n", evalue[j]);
+
 					}
 					break;
 				case 0xC:
@@ -169,7 +178,7 @@ static int SequencerThread(void *ptr)
 					if(ncursor==0) {
 						cursor = ((cursor>>6)+1)<<6;
 					} else {
-						cursor = ncursor;
+						cursor = (((cursor>>6)+1)<<6) + ncursor;
 					}
 					cursor--;
 					//printf("<<<<<<< Pattern %3d, Pos: %3d >>>>>>>\n", pat, n);
@@ -179,14 +188,14 @@ static int SequencerThread(void *ptr)
 				}
 			}
 
-			set_note_ex2(pitch, instru, volume);
+			set_note_ex2(pitch, instru, volume, offset);
 		
 			push_event(n, pat, i);
 		
 			currentTime = SDL_GetTicks();
 			int delay = delta*ticks; // - SDL_TICKS_PASSED(lastTime, currentTime);
 			lastTime = currentTime;
-			size_t ns = (delay * 22.050);
+			size_t ns = (float)(delay * 22.050);
 			generate_audio(ns);
         	//printf("\nDelay: %d", delay);
 			//if (delay>0) {
@@ -296,7 +305,7 @@ void dump_channel_item_str(char *dest, ChannelItem *p)
 	sprintf(dest, "%s%02X%01X%02X", name, instru, effect, evalue);
 }
 
-void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8])
+void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8])
 {
 	uint32_t p[8];
 	int i;
@@ -319,30 +328,36 @@ void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8])
 			octave = 0;
 		}
 
-		phase = (freq_tab[note[i]%12]*oct_tab[octave]/261.63);
+#define FK_old 261.63
+#define FK 311.00
 
-		p[i] = phase*0x10000;
-			
+
+		phase = (freq_tab[note[i]%12]*oct_tab[octave]/FK);
+
+		p[i] = phase*0x10000;	
 	}
-
-	/*
+/*
 	for(i=0;i<4;i++) {
 		printf(" # %08X - %02X", p[i], smp[i]);
 	}
-	*/
-
+	printf("\n");
+*/
 	for (i=0;i<8;i++) {
 		
 		if (p[i]==0) {
 			if( volume[i]!=0xFF) {
 				SamplerGlobalStatus.volume[i]  = volume[i];
 			}
+			if (offset[i]!=1) {
+				SamplerGlobalStatus.pointer[i] = offset[i]<<16;
+			}
 			continue;
 		}
 
 		SamplerGlobalStatus.phase[i]   = p[i];
 		SamplerGlobalStatus.sample[i]  = smp[i];
-		SamplerGlobalStatus.pointer[i] = 0;
+		SamplerGlobalStatus.pointer[i] = (offset[i]!=1) ? offset[i]<<16 : 0;
+
 		if (volume[i]==0xFF) {
 			SamplerGlobalStatus.volume[i]  = Samples[smp[i]].vol;
 		} 

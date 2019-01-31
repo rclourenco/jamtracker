@@ -220,7 +220,7 @@ int load_mod(char *modfile)
 	for(i=0;i<smpn;i++) {
 		char smpname[23];
 		unsigned char smpdef[30];
-		unsigned slen = 0, ls = 0, llen = 0;
+		uint32_t slen = 0, ls = 0, llen = 0;
 		if( fread(smpdef, 30, 1, fp) != 1 ) {
 			goto failure;
 		}
@@ -232,6 +232,7 @@ int load_mod(char *modfile)
 		llen = smpdef[28]*256+smpdef[29];
 		ls *= 2;
 		llen *= 2;
+
 		printf("Sample %2d: %-22s S:%5X T: %d V: %2d [%6X => %6X]\n", 
 				i, smpname, slen, smpdef[24], smpdef[25],ls,llen);
 		Samples[i].len = slen;
@@ -315,19 +316,21 @@ int main( int argc, char *args[])
 	/*
 	debug dump pattern
 	*/
-	if (LoadedPatterns>0) {
+	int cp;
+	for(cp=0; cp < LoadedPatterns; cp++) {
 		int i;
-		printf("------- Pattern 1 --------\n");
+		printf("------- Pattern %d --------\n", cp);
 		for (i=0;i<64;i++) {
 			int j=0;
 			for (j=0;j<4;j++) {
-				ChannelItem *p = &(Pattern[0].item[i*4+j]);
+				ChannelItem *p = &(Pattern[cp].item[i*4+j]);
 				dump_channel_item(p);
 				printf(" - ");
 			}
 			printf("\n");
 		}
 		printf("--------------------------\n");
+		break;
 	}
 	
 	seqdta.patterns = Pattern;
@@ -676,8 +679,7 @@ void audio_callback2(void *userdata, Uint8 *stream, int len)
 
 	for(i=wrt; i<len; i++) {
 		stream[i]=128;
-	}	
-
+	}
 }
 
 struct _SamplerStatus statuscpy;
