@@ -33,6 +33,8 @@ typedef struct {
 } SequencerData;
 
 extern uint8_t note_period_tab[2048];
+extern uint32_t period_phase[2048];
+
 extern Uint32 SequencerEvent;
 
 int start_sequencer(SequencerData *data);

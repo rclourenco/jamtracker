@@ -9,9 +9,10 @@ void extract_channel_data(
 	uint8_t *effect, 
 	uint8_t *evalue,
 	uint8_t *instru,
-	uint8_t *pitch );
+	uint8_t *pitch,
+        uint16_t *period);
 
-void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8]);
+void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8]);
 int generate_audio(size_t ns);
 
 extern struct _SamplerStatus SamplerGlobalStatus;
@@ -109,6 +110,7 @@ static int SequencerThread(void *ptr)
 	uint8_t pitch[8]  = {0,0,0,0, 0,0,0,0};
 	uint8_t volume[8] = {0,0,0,0, 0,0,0,0};
 	uint32_t offset[8] = {1,1,1,1, 1,1,1,1};
+	uint16_t period[8] = {0,0,0,0, 0,0,0,0};
  
 	int n=0, o_n=-1;
 	uint8_t ticks = 6;
@@ -140,7 +142,7 @@ static int SequencerThread(void *ptr)
 				ChannelItem *p = &(s->patterns[pat].item[i*4+j]);
 				next_step = i+1;
 				
-				extract_channel_data(p, &effect[j], &evalue[j], &instru[j], &pitch[j]);
+				extract_channel_data(p, &effect[j], &evalue[j], &instru[j], &pitch[j], &period[j]);
 					
 				if(pitch[j]>0 && instru[j]>0) {
 					pitch[j] -= 24;
@@ -188,7 +190,7 @@ static int SequencerThread(void *ptr)
 				}
 			}
 
-			set_note_ex2(pitch, instru, volume, offset);
+			set_note_ex2(period, pitch, instru, volume, offset);
 		
 			push_event(n, pat, i);
 		
@@ -257,16 +259,15 @@ void extract_channel_data(
 	uint8_t *effect, 
 	uint8_t *evalue,
 	uint8_t *instru,
-	uint8_t *pitch )
+	uint8_t *pitch,
+        uint16_t *period)
 {
-	uint16_t period;
-
 	*effect = p->data[2]&0x0F;
 	*evalue = p->data[3];
 	*instru = ((p->data[0]&0xF0)) | ((p->data[2]&0xF0)>>4);
-	period = ((p->data[0]&0x0F) << 8) | p->data[1];
+	*period = ((p->data[0]&0x0F) << 8) | p->data[1];
 	
-	*pitch = note_period_tab[period];
+	*pitch = note_period_tab[*period];
 }
 
 void dump_channel_item(ChannelItem *p)
@@ -305,10 +306,30 @@ void dump_channel_item_str(char *dest, ChannelItem *p)
 	sprintf(dest, "%s%02X%01X%02X", name, instru, effect, evalue);
 }
 
-void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8])
+float fine_tune[16] = {
+	1.0,
+	1.0072464122237,
+	1.01454533493752,
+	1.02189714865412,
+	1.02930223664349,
+	1.03676098495299,
+	1.04427378242741,
+	1.05184102072929,
+	0.943874312681693,
+	0.95071401503875,
+	0.957603280698573,
+	0.964542468817287,
+	0.971531941153606,
+	0.9785720620877,
+	0.985663198640187,
+	0.992805720491269
+	};
+
+void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8])
 {
 	uint32_t p[8];
 	int i;
+	uint8_t tune;
 
 	for (i=0;i<8;i++) {
 		if (note[i]==0) {
@@ -316,6 +337,9 @@ void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t o
 			continue;
 		}
 
+		tune = Samples[smp[i]].tune%16;
+
+		/*
 		uint8_t octave = (note[i]/12);
 		float phase;
 
@@ -335,6 +359,9 @@ void set_note_ex2(uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t o
 		phase = (freq_tab[note[i]%12]*oct_tab[octave]/FK);
 
 		p[i] = phase*0x10000;	
+		*/
+
+		p[i] = period_phase[period[i]]*fine_tune[tune];
 	}
 /*
 	for(i=0;i<4;i++) {
@@ -430,7 +457,6 @@ int generate_audio(size_t ns)
 		}
 		if(len) {
 			PipeSend(&audiostream, audbuffer, len);
-			//SDL_QueueAudio(1, audbuffer, len);
 		}
 	}
 	return 1;

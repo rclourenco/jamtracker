@@ -208,7 +208,13 @@ int load_mod(char *modfile)
 	modtype[4]='\0';
 	ModName[20]='\0';
 
-	if (modtype[0]=='M' && modtype[1]=='.' && modtype[2]=='K' && modtype[3]=='.') {
+	if (!strcmp(modtype, "M.K.")) {
+		smpn=31;
+	}
+	else if (!strcmp(modtype, "M!K!")) {
+		smpn=31;
+	}
+	else if (modtype[0]=='M' && modtype[1]=='.' && modtype[2]=='K' && modtype[3]=='.') {
 		smpn=31;
 	} else {
 		printf("Not supported\n");
