@@ -800,7 +800,7 @@ int init_new()
 	memset(&want, 0, sizeof(want)); /* or SDL_zero(want) */
 	want.freq = 22050;
 	want.format = AUDIO_U8;
-	want.channels = 1;
+	want.channels = 2;
 	want.samples = 1024;
 	//want.callback = audio_callback; /* you wrote this function elsewhere -- see SDL_AudioSpec for details */
 	want.callback = audio_callback2;
@@ -810,7 +810,7 @@ if (SDL_OpenAudio(&want, &have) < 0) {
     printf("Failed to open audio: %s\n", SDL_GetError());
     return 0;
 } else {
-    if (have.format != want.format) {
+    if (have.format != want.format || have.channels != want.channels) {
         printf("We didn't get AUDIO_U8 audio format.\n");
 	return 0;
     }
