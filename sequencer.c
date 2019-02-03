@@ -12,7 +12,11 @@ void extract_channel_data(
 	uint8_t *pitch,
         uint16_t *period);
 
-void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8]);
+typedef struct {
+} RowParams;
+
+void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8], uint8_t tick);
+
 int generate_audio(size_t ns);
 void apply_fx(int16_t perinc[8], int8_t volinc[8]);
 
@@ -114,10 +118,18 @@ int16_t  perinc[8] = {0,0,0,0, 0,0,0,0};
 int16_t  slide[8]   = {0,0,0,0, 0,0,0,0};
 uint16_t slideto[8] = {0,0,0,0, 0,0,0,0};
 
+uint8_t note_delay[8] = {0,0,0,0, 0,0,0,0};
+uint8_t note_cut[8]   = {0,0,0,0, 0,0,0,0};
+
+uint8_t note_vib[8]  = {0,0,0,0, 0,0,0,0};
+uint8_t note_arp[8]  = {0,0,0,0, 0,0,0,0};
+
+uint8_t vibrato_ptr[8] = {0,0,0,0, 0,0,0,0};
+
 /* Very simple thread - counts 0 to 9 delaying 50ms between increments */
 static int SequencerThread(void *ptr)
 {
-    int cnt;
+    int cnt = 0;
     SequencerData *s=(SequencerData *)ptr;
 
  
@@ -133,8 +145,11 @@ static int SequencerThread(void *ptr)
 		int next_step;
 		int pat;
 
-		if (cursor > s->nseq*64)
+		if (cursor >= s->nseq*64) {
+			push_event(0xFF, 0xFF, 0xFF);
     			cursor=0;
+			break;
+		}
 
 		n = cursor>>6;
 		pat = s->seq[n];
@@ -148,9 +163,14 @@ static int SequencerThread(void *ptr)
     		for (j=0;j<4;j++) {
 				int r_perinc = 1;
 				int r_slide  = 1;
+				int r_vibrato = 1;
+
 				volume[j]=0xFF;
 				offset[j]=0x1; // disable
 				volinc[j]=0;
+				note_delay[j]=0;
+				note_cut[j]=0;
+				note_arp[j]=0;
 
 				ChannelItem *p = &(s->patterns[pat].item[i*4+j]);
 				next_step = i+1;
@@ -164,6 +184,7 @@ static int SequencerThread(void *ptr)
 				switch (effect[j]) {
 				case 0x0:
 					if (evalue[j]!=0) {
+						note_arp[j] = evalue[j];
 						printf(">>> Arpejo: %02X\n", evalue[j]);
 					}
 				break;
@@ -207,13 +228,24 @@ static int SequencerThread(void *ptr)
 					period[j] = 0;
 					r_slide = 0;
 					break;
+				case 0x4:
+					if (evalue[j]!=0) {
+						note_vib[j]=evalue[j];
+					}
+					r_vibrato = 0;
+					break;
 				case 0x5:
 					if (period[j] != 0) {
 						slideto[j] = period[j];
 					}
 					period[j] = 0;
 					r_slide = 0;
+					//fall
 				case 0x6:
+					if (effect[j]==0x6) {
+						r_vibrato=0;
+					}
+					//fall
 				case 0xA:
 					if ( (evalue[j]&0xF0) == 0x0) {
 						volinc[j]=-(int8_t)(evalue[j]&0x0F);
@@ -225,6 +257,12 @@ static int SequencerThread(void *ptr)
 				case 0xC:
 					if (evalue[j]<=64) {
 						volume[j]=evalue[j];
+					}
+				break;
+				case 0xB:
+					if (64*evalue[j]>cursor) { // add a flag to enable looping
+						cursor=64*evalue[j];
+						cursor--;
 					}
 				break;
 				case 0xD:
@@ -252,6 +290,16 @@ static int SequencerThread(void *ptr)
 					case 0xB:
 					      adjust_volume(j, -(evalue[j]&0xF));
 					break;
+					case 0xC:
+						note_cut[j]=evalue[j]&0xF;
+						printf("Note cut %d\n", j);
+					break;
+					case 0xD:
+						note_delay[j]=evalue[j]&0xF;
+						printf("Note delay[%d]: %d\n", j, note_delay[j]);
+					break;
+					default:
+						printf("TODO fx 0xE%02x \n", evalue[j]);
 					}
 				break;
 				default:
@@ -266,9 +314,13 @@ static int SequencerThread(void *ptr)
 					slide[j]   = 0;
 					slideto[j] = 0;
 				}
+
+				if (r_vibrato) {
+					note_vib[j]=0;
+				}
 			}
 
-			set_note_ex2(period, pitch, instru, volume, offset);
+			//set_note_ex2(period, pitch, instru, volume, offset, t, trigger_at);
 		
 			push_event(n, pat, i);
 		
@@ -276,6 +328,8 @@ static int SequencerThread(void *ptr)
 			size_t ns = (float)(delta * 22.050);
 
 			for(t=0;t<ticks;t++) {
+				set_note_ex2(period, pitch, instru, volume, offset, t);
+
 				generate_audio(ns);
 				apply_fx(perinc, volinc);
 			}
@@ -398,13 +452,119 @@ float fine_tune[16] = {
 	0.992805720491269
 	};
 
-void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8])
+float arpeggio_table[16] = {
+	1,
+	1.0594630943593,
+	1.12246204830937,
+	1.18920711500272,
+	1.25992104989487,
+	1.33483985417003,
+	1.4142135623731,
+	1.49830707687668,
+	1.5874010519682,
+	1.68179283050743,
+	1.78179743628068,
+	1.88774862536339,
+	2,
+	2.11892618871859,
+	2.24492409661875,
+	2.37841423000544
+};
+
+extern int16_t mod_sine[64];
+
+int16_t note_vibrato(uint8_t ch)
+{
+	int16_t offset = 0;
+	int16_t depth  = note_vib[ch] & 0xF;
+	uint8_t speed  = note_vib[ch]>>4;
+	uint8_t tune = 0;
+	uint16_t p = 0;
+
+	printf("Vibrato[%d]: %02X Depth %d Speed: %d\n", ch, note_vib[ch], depth, speed);
+
+	if (instru[ch]!=-1 || period[ch]!=0) {
+		vibrato_ptr[ch]=0;
+	}
+
+	offset = (mod_sine[vibrato_ptr[ch]]*depth)/64;
+	vibrato_ptr[ch] = (vibrato_ptr[ch]+speed)&0x3F;
+
+
+	if (SamplerGlobalStatus.sample[ch]!=-1) {
+		tune = Samples[SamplerGlobalStatus.sample[ch]].tune%16;
+	}
+
+	p = SamplerGlobalStatus.period[ch] ;
+	p += offset;
+
+	if (p>4096 || p<113) {
+		p=113;
+	}
+
+	if (p>856) {
+		p=856;
+	}
+
+	SamplerGlobalStatus.phase[ch]  = period_phase[p]*fine_tune[tune];
+
+	
+	return offset;
+}
+
+void note_arpeggio(uint8_t ch, uint8_t tick)
+{
+	float mod = 1.0;
+	uint8_t tune = 0;
+
+	if (SamplerGlobalStatus.sample[ch]!=-1) {
+		tune = Samples[SamplerGlobalStatus.sample[ch]].tune%16;
+	}
+
+	switch (tick%3) {
+		case 0:
+			mod = 1.0;
+		break;
+		case 1:
+			mod = arpeggio_table[note_arp[ch]>>4];
+		break;
+		case 2:
+			mod = arpeggio_table[note_arp[ch]&0xF];
+		break;
+	}
+
+	uint32_t period = SamplerGlobalStatus.period[ch];
+	SamplerGlobalStatus.phase[ch]  = period_phase[period]*fine_tune[tune]*mod;
+}
+
+void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8], uint8_t tick)
 {
 	int i;
 
 	for (i=0;i<8;i++) {
 		
 		int retrigger = 0;
+
+		int16_t period_offset = 0;
+
+		if (note_vib[i]!=0) {
+			period_offset = note_vibrato(i);
+		}
+
+		if (tick != 0 && note_arp[i]!=0) {
+			note_arpeggio(i, tick);
+		}
+
+		if (tick != 0 && tick == note_cut[i]) {
+			//SamplerGlobalStatus.period[i] = 0;
+			//SamplerGlobalStatus.phase[i] = 0;
+			SamplerGlobalStatus.volume[i] = 0;
+			continue;
+		}
+
+		if (tick != note_delay[i]) {
+			continue;
+		}
 
 		if(smp[i]!=0) {
 			SamplerGlobalStatus.sample[i]  = smp[i]-1;
@@ -422,16 +582,27 @@ void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t v
 			}
 		}
 
-		if(period[i]!=0) { 
+		if (period[i]!=0) { 
 			uint8_t tune = 0;
+			uint16_t p = period[i];
 
 			if (SamplerGlobalStatus.sample[i]!=-1) {
 				tune = Samples[SamplerGlobalStatus.sample[i]].tune%16;
 			}
-			SamplerGlobalStatus.period[i] = period[i];
-			SamplerGlobalStatus.phase[i]  = period_phase[period[i]]*fine_tune[tune];
-			retrigger = 1;
 
+			SamplerGlobalStatus.period[i] = p;
+			p += period_offset;
+
+			if (p>4096 || p<113) {
+				p=113;
+			}
+
+			if (p>856) {
+				p=856;
+			}
+
+			SamplerGlobalStatus.phase[i]  = period_phase[p]*fine_tune[tune];
+			retrigger = 1;
 		}
 
 		if (retrigger) {

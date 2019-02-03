@@ -32,3 +32,10 @@ my @table = (
 for(@table) {
 	print "===> $_\n";
 }
+
+print "Arpeggio table\n";
+
+my @arp_table = map {$ratio**$_ } (0..15);
+for(@arp_table) {
+	print "$_\n";
+}

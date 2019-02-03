@@ -316,7 +316,9 @@ int main( int argc, char *args[])
 {
 	if( argc > 1 )
 	{
-		load_mod(args[1]);
+		if( !load_mod(args[1])) {
+			return 0;
+		}
 	}
 	
 	/*
@@ -556,12 +558,16 @@ int main_loop_new()
 		while( SDL_WaitEvent( &event ) )
         	{
 			if(event.type == SequencerEvent) {
-				//printf(">>> %X\n", event.user.code);
-				update_status(
+				if (event.user.code == 0x10FFFFFF) {
+					quit=1;
+					break;
+				} else {
+					update_status(
 								(event.user.code>>16) & 0xFF,
 								(event.user.code>>8) & 0xFF,
 								event.user.code & 0xFF
 							);
+				}
 			}
 	            //If a key was pressed
 		        if(event.type == SDL_KEYUP)
