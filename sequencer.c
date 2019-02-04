@@ -483,7 +483,7 @@ int16_t note_vibrato(uint8_t ch)
 
 	printf("Vibrato[%d]: %02X Depth %d Speed: %d\n", ch, note_vib[ch], depth, speed);
 
-	if (instru[ch]!=-1 || period[ch]!=0) {
+	if (instru[ch]!=0 || period[ch]!=0) {
 		vibrato_ptr[ch]=0;
 	}
 
