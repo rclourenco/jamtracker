@@ -128,7 +128,7 @@ uint8_t vibrato_ptr[8] = {0,0,0,0, 0,0,0,0};
 
 int16_t loop_point[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
 int8_t loop_count[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
-uint8_t row_delay = 0;
+int8_t row_delay = -1;
 
 /* Very simple thread - counts 0 to 9 delaying 50ms between increments */
 static int SequencerThread(void *ptr)
@@ -337,7 +337,11 @@ static int SequencerThread(void *ptr)
 						printf("Note delay[%d]: %d\n", j, note_delay[j]);
 					break;
 					case 0xE:
-						row_delay=evalue[j]&0xF;
+						if (row_delay<0) {
+							row_delay=evalue[j]&0xF;
+						} else if (row_delay==0) {
+							row_delay = -1;
+						}
 					break;
 					default:
 						printf("TODO fx 0xE%02x \n", evalue[j]);
