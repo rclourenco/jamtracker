@@ -126,6 +126,10 @@ uint8_t note_arp[8]  = {0,0,0,0, 0,0,0,0};
 
 uint8_t vibrato_ptr[8] = {0,0,0,0, 0,0,0,0};
 
+int16_t loop_point[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
+int8_t loop_count[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
+uint8_t row_delay = 0;
+
 /* Very simple thread - counts 0 to 9 delaying 50ms between increments */
 static int SequencerThread(void *ptr)
 {
@@ -139,11 +143,14 @@ static int SequencerThread(void *ptr)
 	unsigned int currentTime = SDL_GetTicks();
 	unsigned int lastTime = currentTime;
 	int i=0, j;
-	uint16_t cursor=0;
+	int16_t cursor=0;
 	while(1) {
 		int j;
 		int next_step;
 		int pat;
+
+		if (cursor<0)
+			cursor=0;
 
 		if (cursor >= s->nseq*64) {
 			push_event(0xFF, 0xFF, 0xFF);
@@ -284,6 +291,37 @@ static int SequencerThread(void *ptr)
 					case 0x2:
 						adjust_period(j, -(evalue[j]&0xF));
 					break;
+					case 0x6:
+						{
+							uint8_t v = evalue[j]&0xF;
+							if (v==0) {
+								loop_point[j] = cursor;
+								printf("Loop @ %d\n", cursor);
+							}
+							else if (v!=0 && loop_point[j]!=-1) {
+								if (loop_count[j] == -1) {
+									printf("Set Count = %d\n", v);
+									loop_count[j] = v;
+								} else {
+									printf("Dec count %d\n", loop_count[j]-1);
+									loop_count[j]--;
+								}
+							
+
+								if (loop_count[j]==0) {
+									printf("Continue...\n");
+									loop_count[j] = -1; 
+									loop_point[j] = -1; 
+								}
+
+								if (loop_point[j]>=0) {
+									printf("Jump to %d\n", loop_point[j]);
+									cursor = loop_point[j]-1;
+								}
+							}
+
+						}	
+					break;
 					case 0xA:
 					      adjust_volume(j, evalue[j]&0xF);
 					break;
@@ -292,11 +330,14 @@ static int SequencerThread(void *ptr)
 					break;
 					case 0xC:
 						note_cut[j]=evalue[j]&0xF;
-						printf("Note cut %d\n", j);
+						printf("Note cut %d -> %d\n", j, note_cut[j]);
 					break;
 					case 0xD:
 						note_delay[j]=evalue[j]&0xF;
 						printf("Note delay[%d]: %d\n", j, note_delay[j]);
+					break;
+					case 0xE:
+						row_delay=evalue[j]&0xF;
 					break;
 					default:
 						printf("TODO fx 0xE%02x \n", evalue[j]);
@@ -334,7 +375,12 @@ static int SequencerThread(void *ptr)
 				apply_fx(perinc, volinc);
 			}
 
-    			cursor++;
+			if (row_delay>0) {
+				printf("Repeat row ---\n");
+				row_delay--;
+			} else {
+    				cursor++;
+			}
     }
 
     return cnt;
