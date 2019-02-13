@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <math.h>
 
 Uint32 palette[256] = {
 0x000000,
@@ -260,17 +261,27 @@ Uint32 palette[256] = {
 0x000000
 };
 
+void rotate_palette()
+{
+	Uint32 l = palette[255];
+	int i;
+	for(i=255;i>0;i--) {
+		palette[i] = palette[i-1];
+	}
+	palette[0] = l;
+}
+
 int main(int argc, char *argv[]) {
     SDL_Window *win = NULL;
     SDL_Renderer *renderer = NULL;
     SDL_Texture *bitmapTex = NULL;
     SDL_Surface *bitmapSurface = NULL;
 	SDL_Texture *screenx = NULL;
-    int posX = 100, posY = 100, width = 1280, height = 800;
+    int posX = 100, posY = 100, width = 800, height = 600;
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    win = SDL_CreateWindow("Hello World", posX, posY, width, height, 0);
+    win = SDL_CreateWindow("Splash!", posX, posY, width, height,SDL_WINDOW_RESIZABLE );
 
     renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
 
@@ -293,13 +304,17 @@ int main(int argc, char *argv[]) {
 
 	SDL_PixelFormat *pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
 
+    int16_t rx = 0x1234;
     while (1) {
         SDL_Event e;
         if (SDL_PollEvent(&e)) {
+		rx++;
             if (e.type == SDL_QUIT) {
                 break;
             }
         }
+//	rx++;
+	rotate_palette();
 		int pitch;
 		uint8_t *pixels;
 		SDL_LockTexture(screenx, NULL, (void **)&pixels, &pitch);
@@ -307,7 +322,19 @@ int main(int argc, char *argv[]) {
 		for (y = 0; y < h; y++) {
     Uint32 *p = (Uint32 *)(pixels + pitch*y); // cast for a pointer increments by 4 bytes.(RGBA)
     for (x = 0; x < w; x++) {
-		*p = palette[x%256];
+
+	    	uint8_t ci = 0;
+	    	switch ((rx/100)%3) {
+		case 0:
+	    		ci = ((int)(sin(x*6.28/80.0)*20)%60) | ((int)(sin(y*6.28/80.0)*20)%60);
+			break;
+		case 1:
+			ci = ((int)(sin(x*6.28/80.0)*20)%60) ^ ((int)(sin(y*6.28/80.0)*20)%60);
+		break;
+		default:
+			ci = ((int)(sin(x*6.28/80.0)*20)%60) & ((int)(sin(y*6.28/80.0)*20)%60);
+		}
+		*p = palette[ci%256];
       // *p = 0x00FF0000;
 /*      if (x > 20)
         *p = SDL_MapRGBA(pixelFormat, 255, 0, 0, 255);
@@ -325,6 +352,7 @@ int main(int argc, char *argv[]) {
         SDL_RenderCopy(renderer, screenx, NULL, NULL);
         SDL_RenderPresent(renderer);
 		SDL_Delay(25);
+		rx++;
     }
 
     SDL_DestroyTexture(bitmapTex);
