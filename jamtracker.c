@@ -9,6 +9,7 @@ and may not be redistributed without written permission.*/
 #include <stdio.h>
 #include <strings.h>
 #include "jamtracker.h"
+#include "graphlib.c"
 
 //Screen attributes
 const int SCREEN_WIDTH = 640;
@@ -34,11 +35,6 @@ struct _SamplerStatus SamplerGlobalStatus;
 
 SequencerData seqdta;
 char ModName[21];
-
-SDL_Window *window = NULL;
-//The surfaces
-SDL_Texture *background = NULL;
-SDL_Renderer *renderer = NULL;
 
 //The event structure
 SDL_Event event;
@@ -92,22 +88,6 @@ void textwrite(char *str)
 
 SDL_mutex *mutex;
 
-SDL_Texture *load_image(const char *filename )
-{
-	SDL_Surface *surf = SDL_LoadBMP( filename );
-    
-	if( surf == NULL )
-	{
-		printf("No image loaded\n");
-		return 0;
-	}
-    
- 	SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surf);
-	SDL_FreeSurface(surf);
-	
-	return texture;
-}
-
 void apply_surface()
 {
 	#define SHAPE_W 16
@@ -117,11 +97,12 @@ void apply_surface()
 	SDL_Rect SrcR;
 	SDL_Rect DestR;
 
-	
-	SDL_RenderClear(renderer);
+    fillscreen(0);	
+//	SDL_RenderClear(renderer);
 	for (i=0;i<80;i++) {
 		for(j=0;j<25;j++) {
-			unsigned char v = textbuffer[j*80+i];
+			unsigned char vo = textbuffer[j*80+i];
+			unsigned char v = vo;
 			if (v>='A' && v<='Z')
 				v = v - 'A' + 33;
 			else if(v>='a' && v<= 'z')
@@ -144,15 +125,17 @@ void apply_surface()
 			SrcR.w = 32;
 			SrcR.h = 25;
 
-			DestR.x = i*32;
-			DestR.y = j*25;
+			DestR.x = i*8;
+			DestR.y = j*8;
 			DestR.w = 32;
 			DestR.h = 25;
-
-			SDL_RenderCopy(renderer, background, &SrcR, &DestR);
+			pchar(DestR.x, DestR.y, vo);
+			//SDL_RenderCopy(renderer, background, &SrcR, &DestR);
 		}
 	}
-	SDL_RenderPresent(renderer);
+	graph_refresh();
+	rotate_palette();
+//	SDL_RenderPresent(renderer);
 
 }
 
@@ -160,17 +143,21 @@ void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 {
 	char data[128];
 	int j;
+
+	sprintf(data, " %02X", pos);
+	textwrite(data);
 	for (j=0;j<4;j++) {
 		ChannelItem *p = &(Pattern[pat].item[pos*4+j]);
 
 		dump_channel_item_str(data, p);
 		textwrite(" ");
 		textwrite(data);
-		if(j%2) {
-			textwrite("\n");
-		} else {
-			textwrite(" ");
-		}
+		//textwrite(" ");
+//		if(j%2) {
+//			textwrite("\n");
+//		} else {
+//			textwrite(" ");
+//		}
 	}
 	textwrite("\n");
 //	sprintf(data, "%d %d %d\n", seq, pat, pos);
@@ -648,7 +635,7 @@ int main_loop_new()
 void cleanup_new()
 {
     //Free the surfaces
-    SDL_DestroyTexture( background );
+//    SDL_DestroyTexture( background );
 
     //Close the font
     //TTF_CloseFont( font );
@@ -657,28 +644,12 @@ void cleanup_new()
     //TTF_Quit();
 
     //Quit SDL
-    SDL_Quit();
+//    SDL_Quit();
+	modo3h();
 }
 
 int load_files_new()
 {
-    //Load the background texture
-     background = load_image( "data/font_x.bmp" );
-
- 	if( background == NULL )
-	{
-		printf("No background loaded\n");
-		return 0;
-	}
-    
-
-    //If there was an error in loading the font
-  //  if( font == NULL )
-  //  {
-   //     return 0;
-   // }
-
-    //If everything loaded fine
     return 1;
 }
 
@@ -769,30 +740,9 @@ int init_new()
   		return 0;
 	}
 
-    window = SDL_CreateWindow("JamTracker I",
-                                          SDL_WINDOWPOS_CENTERED,
-                                          SDL_WINDOWPOS_CENTERED,
-                                          SCREEN_WIDTH, SCREEN_HEIGHT,
-                                          SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+	set_window_name("Jamtrack I");
+	modo13h();
 
-	if( window == NULL) {
-		return 0;
-	}
-	
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-	
- 
-    //If there was an error in setting up the screen
-    if( renderer == NULL )
-    {
-        return 0;
-    }
-
-    //Initialize SDL_ttf
-//    if( TTF_Init() == -1 )
-//    {
-//        return 0;
-//    }
 
 	int i, count = SDL_GetNumAudioDevices(0);
 

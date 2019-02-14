@@ -75,6 +75,8 @@ char ScrnCpyDU();
 
 void rotate_palette();
 
+void set_window_name(char *n);
+
 unsigned char *cart=0L;
 
 #define SCREEN_W 320
@@ -86,6 +88,13 @@ struct {
 	SDL_Texture  *screenx;
 	SDL_PixelFormat *pixelFormat;
 } GraphSystem = {NULL, NULL, NULL, NULL};
+
+char *window_name = "Untitled";
+
+void set_window_name(char *n)
+{
+	window_name = n;
+}
 
 int modo13h()
 {
@@ -99,7 +108,7 @@ int modo13h()
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    GraphSystem.win         = SDL_CreateWindow("Splash!", posX, posY, width, height,SDL_WINDOW_RESIZABLE );
+    GraphSystem.win         = SDL_CreateWindow(window_name, posX, posY, width, height,SDL_WINDOW_RESIZABLE );
     GraphSystem.renderer    = SDL_CreateRenderer(GraphSystem.win, -1, SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
 	GraphSystem.screenx     = SDL_CreateTexture(GraphSystem.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
 	GraphSystem.pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
