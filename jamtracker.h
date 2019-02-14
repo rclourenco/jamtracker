@@ -1,36 +1,22 @@
 #ifndef _jamtracker_h 
 	#define _jamtracker_h
+#include "musmod.h"
 
-struct _Sample {
-	size_t len;
-	size_t loop_start;
-	size_t loop_end;
-	uint8_t vol;
-	uint8_t tune;
-	unsigned char *data;
-};
-
-struct _SamplerStatus {
+typedef struct _SamplerStatus {
 	uint32_t phase[8];
 	uint16_t period[8];
 	int      sample[8];
 	uint32_t pointer[8];
 	uint8_t  volume[8];
-};
-
-typedef struct {
-	uint8_t data[4];
-} ChannelItem;
-
-typedef struct {
-	ChannelItem item[4*64];
-} ModPattern;
+	Sample   *smpdata;
+} SamplerStatus;
 
 typedef struct {
 	ModPattern *patterns;
 	size_t npat;
 	uint8_t *seq;
 	size_t nseq;
+	Sample *smpdata;
 } SequencerData;
 
 extern uint8_t note_period_tab[2048];

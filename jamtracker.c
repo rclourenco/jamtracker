@@ -1,11 +1,4 @@
-/*This source code copyrighted by Lazy Foo' Productions (2004-2013)
-and may not be redistributed without written permission.*/
-
-//The headers
 #include <SDL2/SDL.h>
-//#include <SDL/SDL_image.h>
-//#include <SDL/SDL_ttf.h>
-//#include <SDL/SDL_mixer.h>
 #include <stdio.h>
 #include <strings.h>
 #include "jamtracker.h"
@@ -16,25 +9,7 @@ const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 500;
 const int SCREEN_BPP = 0;
 
-struct _Sample Samples[31];
-
-size_t nSamples = 0;
-
-struct {
-	unsigned char np;
-	unsigned char flag;
-	unsigned char seq[128];
-	unsigned char id[4];
-} ModSeq;
-
-ModPattern Pattern[127];
-
-uint8_t LoadedPatterns = 0;
-
-struct _SamplerStatus SamplerGlobalStatus;
-
 SequencerData seqdta;
-char ModName[21];
 
 //The event structure
 SDL_Event event;
@@ -80,12 +55,6 @@ void textwrite(char *str)
 	}
 }
 
-//The music that will be played
-
-//The sound effects that will be used
-
-//Mix_Chunk test[31];
-
 SDL_mutex *mutex;
 
 void apply_surface()
@@ -96,8 +65,8 @@ void apply_surface()
 	int i,j;
 	SDL_Rect SrcR;
 	SDL_Rect DestR;
-
-    fillscreen(0);	
+	TextColor=14;
+    fillscreen(0x1);	
 //	SDL_RenderClear(renderer);
 	for (i=0;i<80;i++) {
 		for(j=0;j<25;j++) {
@@ -134,7 +103,7 @@ void apply_surface()
 		}
 	}
 	graph_refresh();
-	rotate_palette();
+	//rotate_palette();
 //	SDL_RenderPresent(renderer);
 
 }
@@ -147,7 +116,7 @@ void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 	sprintf(data, " %02X", pos);
 	textwrite(data);
 	for (j=0;j<4;j++) {
-		ChannelItem *p = &(Pattern[pat].item[pos*4+j]);
+		ChannelItem *p = &(seqdta.patterns[pat].item[pos*4+j]);
 
 		dump_channel_item_str(data, p);
 		textwrite(" ");
@@ -166,131 +135,6 @@ void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 	apply_surface();
 }
 
-int load_mod(char *modfile)
-{
-	char modtype[5];
-	int smpn = 15;
-	int i = 0;
-	int max = 0;
-
-	FILE *fp;
-	fp = fopen(modfile, "rb");
-	if( !fp )
-	{
-		return 0;
-	}
-
-	fseek(fp, 1080, SEEK_SET);
-	if(fread(modtype, 4, 1, fp)!=1)
-	{
-		goto failure;
-	}
-	fseek(fp, 0, SEEK_SET);
-
-	if(fread(ModName, 20, 1, fp)!=1) {
-	
-		goto failure;
-	}
-
-	modtype[4]='\0';
-	ModName[20]='\0';
-
-	if (!strcmp(modtype, "M.K.")) {
-		smpn=31;
-	}
-	else if (!strcmp(modtype, "M!K!")) {
-		smpn=31;
-	}
-	else if (modtype[0]=='M' && modtype[1]=='.' && modtype[2]=='K' && modtype[3]=='.') {
-		smpn=31;
-	} else {
-		printf("Not supported\n");
-		goto failure;
-	}
-
-	printf("ModType: %s\n", modtype);
-	printf("Modname: %s\n", ModName);
-	for(i=0;i<smpn;i++) {
-		char smpname[23];
-		unsigned char smpdef[30];
-		uint32_t slen = 0, ls = 0, llen = 0;
-		if( fread(smpdef, 30, 1, fp) != 1 ) {
-			goto failure;
-		}
-		strncpy(smpname, (const char *)smpdef, 22);
-		smpname[22]='\0';
-		slen = smpdef[22]*256+smpdef[23];
-		slen <<= 1;
-		ls = smpdef[26]*256+smpdef[27];
-		llen = smpdef[28]*256+smpdef[29];
-		ls *= 2;
-		llen *= 2;
-
-		printf("Sample %2d: %-22s S:%5X T: %d V: %2d [%6X => %6X]\n", 
-				i, smpname, slen, smpdef[24], smpdef[25],ls,llen);
-		Samples[i].len = slen;
-		Samples[i].data = NULL;
-		Samples[i].vol  = smpdef[25];
-		Samples[i].tune = smpdef[24]&0xF;
-		if (Samples[i].vol == 0) {
-			Samples[i].vol = 32;
-		}
-		Samples[i].loop_start = ls;
-		if (llen>2) {
-			Samples[i].loop_end = ls+llen;
-		} else {
-			Samples[i].loop_end = ls;
-		}
-	}
-	nSamples = smpn;
-	if (fread(&ModSeq, sizeof(ModSeq), 1, fp)!=1) {
-		goto failure;
-	}
-
-	printf("Number of patterns: %u\n", ModSeq.np);
-	printf("Flag: %u\n", ModSeq.flag);
-	printf("ID: %c%c%c%c\n", ModSeq.id[0], ModSeq.id[1], ModSeq.id[2], ModSeq.id[3]);
-	printf("L: %ld\n", ftell(fp));
-	
-	for(i=0;i<=ModSeq.np;i++) {
-		if (ModSeq.seq[i]>max) 
-			max = ModSeq.seq[i];
-	}
-	max++;
-	printf("Max %d\n", max);
-	if (max>127) {
-		fprintf(stderr, "Unsupported number o patterns\n");
-		goto failure;
-	}
-	
-	for (i=0; i<max; i++) {
-		if (fread(&Pattern[i], sizeof(ModPattern), 1, fp)!=1) {
-			goto failure;
-		}
-	}
-	LoadedPatterns=max;
-	
-	printf("L: %ld\n", ftell(fp));
-	for(i=0;i<nSamples;i++) {
-		printf("S: %u\n", (unsigned int)Samples[i].len);
-		if (Samples[i].len == 0)
-			continue;
-		Samples[i].data = (unsigned char *)malloc(Samples[i].len);
-		if (Samples[i].data == NULL) {
-			goto failure;
-		}
-		if (fread(Samples[i].data, Samples[i].len, 1, fp)!=1)
-			goto failure;
-	}
-
-	printf("L: %ld\n", ftell(fp));
-
-	fclose(fp);
-	return 1;
-failure:
-	fclose(fp);
-	return 0;
-}
 
 int main_loop_old();
 int main_loop_new();
@@ -301,9 +145,14 @@ void cleanup_new();
 
 int main( int argc, char *args[])
 {
+	MusicModule *mm;
 	if( argc > 1 )
 	{
-		if( !load_mod(args[1])) {
+		mm = musmod_load(args[1]);
+
+		printf("XXXXXXXXXX\n");
+	
+		if(mm==NULL) {
 			return 0;
 		}
 	}
@@ -312,13 +161,13 @@ int main( int argc, char *args[])
 	debug dump pattern
 	*/
 	int cp;
-	for(cp=0; cp < LoadedPatterns; cp++) {
+	for(cp=0; cp < mm->lps; cp++) {
 		int i;
 		printf("------- Pattern %d --------\n", cp);
 		for (i=0;i<64;i++) {
 			int j=0;
 			for (j=0;j<4;j++) {
-				ChannelItem *p = &(Pattern[cp].item[i*4+j]);
+				ChannelItem *p = &(mm->patterns[cp].item[i*4+j]);
 				dump_channel_item(p);
 				printf(" - ");
 			}
@@ -328,10 +177,11 @@ int main( int argc, char *args[])
 		break;
 	}
 	
-	seqdta.patterns = Pattern;
-	seqdta.npat = LoadedPatterns;
-	seqdta.seq  = ModSeq.seq;
-	seqdta.nseq = ModSeq.np;
+	seqdta.patterns = mm->patterns;
+	seqdta.npat = mm->lps; 
+	seqdta.seq  = mm->ms.seq;
+	seqdta.nseq = mm->ms.np;
+	seqdta.smpdata = mm->samples;
 
 	printf("INIT now\n");
     //Initialize
@@ -353,19 +203,19 @@ int main( int argc, char *args[])
 	int i;
 
 	for(i=19;i>=0; i--) {
-		if(ModName[i]==32) {
-			ModName[i]=0;
-		} else if (ModName[i]>0) {
+		if(mm->name[i]==32) {
+			mm->name[i]=0;
+		} else if (mm->name[i]>0) {
 			break;
 		}
 	}
-	int ns = strlen(ModName);
+	int ns = strlen(mm->name);
 	char tmp[128];
 	if (ns<20) {
-		sprintf(tmp, "%*s\n", ns+(20-ns)/2, ModName);
+		sprintf(tmp, "%*s\n", ns+(20-ns)/2, mm->name);
 	}
 	else {
-		sprintf(tmp, "%s\n", ModName);
+		sprintf(tmp, "%s\n", mm->name);
 	}
 	textwrite(tmp);
     apply_surface();
@@ -377,32 +227,6 @@ int main( int argc, char *args[])
     return 0;
 }
 
-void set_freq(int f)
-{
-	float phase = (f/130.81)*0x10000;
-
-	if (SDL_LockMutex(mutex) == 0) {
-		SamplerGlobalStatus.phase[0]=phase;
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
-void set_sample(int c)
-{
-	if (SDL_LockMutex(mutex) == 0) {
-		SamplerGlobalStatus.phase[0] = 1 << 16;
-		SamplerGlobalStatus.sample[0]=c;
-		SamplerGlobalStatus.pointer[0]=0;
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
 float freq_tab[12]={
 	130.81, 138.59, 146.83, 
 	155.86, 164.81, 174.61,
@@ -412,130 +236,10 @@ float freq_tab[12]={
 
 float oct_tab[12]={0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0};
 
-void set_note(uint8_t note, uint8_t smp)
-{
-	uint8_t octave = (note/12);
-	float phase;
-	uint32_t p;
-
-	if (octave > 5)
-	{
-		octave = 5;
-	}
-
-	phase = (freq_tab[note%12]*oct_tab[octave]/261.63);
-
-	p = phase*0x10000;
-
-	printf("%d %d %lf %08X\n", octave, note%12, phase, p);
-
-	if (SDL_LockMutex(mutex) == 0) {
-		SamplerGlobalStatus.phase[0] = p;
-		SamplerGlobalStatus.sample[0]=smp;
-		SamplerGlobalStatus.pointer[0]=0;
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
-void set_note_ex(uint8_t note[8], uint8_t smp[8])
-{
-	uint32_t p[8];
-	int i;
-
-	for (i=0;i<8;i++) {
-		if (note[i]==0) {
-			p[i]=0;
-			continue;
-		}
-
-		uint8_t octave = (note[i]/12);
-		float phase;
-
-		if (octave > 5)
-		{
-			octave = 5;
-		}
-
-		if (octave < 0) {
-			octave = 0;
-		}
-
-		phase = (freq_tab[note[i]%12]*oct_tab[octave]/261.63);
-
-		p[i] = phase*0x10000;
-			
-	}
-
-	/*
-	for(i=0;i<4;i++) {
-		printf(" # %08X - %02X", p[i], smp[i]);
-	}
-	*/
-
-	if (SDL_LockMutex(mutex) == 0) {
-		for (i=0;i<8;i++) {
-		
-			if (p[i]==0) {
-				continue;
-			}
-			SamplerGlobalStatus.phase[i]   = p[i];
-			SamplerGlobalStatus.sample[i]  = smp[i];
-			SamplerGlobalStatus.pointer[i] = 0;
-		}
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
-
-
-void set_note_off()
-{
-	if (SDL_LockMutex(mutex) == 0) {
-		SamplerGlobalStatus.phase[0]   = 0;
-		SamplerGlobalStatus.sample[0]  = -1;
-		SamplerGlobalStatus.pointer[0] = 0;
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
-
-
-void get_sampler_status(struct _SamplerStatus *x)
-{
-	if (SDL_LockMutex(mutex) == 0) {
-		memcpy(x, &SamplerGlobalStatus, sizeof(struct _SamplerStatus) );
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
-void update_sampler_pointers(struct _SamplerStatus *x)
-{
-	if (SDL_LockMutex(mutex) == 0) {
-		memcpy(&SamplerGlobalStatus, x, sizeof(struct _SamplerStatus) );
-		//memcpy(SamplerGlobalStatus.pointer, x->pointer, sizeof(int)*8 );
-  		/* Do stuff while mutex is locked */
-  		SDL_UnlockMutex(mutex);
-	} else {
-  		fprintf(stderr, "Couldn't lock mutex\n");
-	}
-}
-
 int main_loop_new()
 {
 	int quit = 0;
-	set_sample(-1);
+
  	SDL_PauseAudio(0); /* start audio playing. */
 	int smp = 0;
 	start_sequencer(&seqdta);	
@@ -634,17 +338,6 @@ int main_loop_new()
 
 void cleanup_new()
 {
-    //Free the surfaces
-//    SDL_DestroyTexture( background );
-
-    //Close the font
-    //TTF_CloseFont( font );
-
-    //Quit SDL_ttf
-    //TTF_Quit();
-
-    //Quit SDL
-//    SDL_Quit();
 	modo3h();
 }
 
@@ -666,65 +359,6 @@ void audio_callback2(void *userdata, Uint8 *stream, int len)
 }
 
 struct _SamplerStatus statuscpy;
-
-void audio_callback(void*  userdata, Uint8* stream, int len)
-{
-
-	int i = 0;
-	get_sampler_status(&statuscpy);
-
-	for(i=0;i<len;i++) 
-	{
-		int s;
-		int total = 0;
-		for (s = 0; s<8;s++) {
-			int c = statuscpy.sample[s];
-			uint32_t bp = statuscpy.pointer[s] >> 16;
-			uint32_t ph = statuscpy.phase[s];
-			uint32_t le, ls;
-			float vol = 1.0;
-			int a = 0;
-
-			if (c < 0 || Samples[c].len < 1 || bp >= Samples[c].len) {
-				continue;
-			}
-
-		/*
-		if (bp >= Samples[c].len)
-		{
-			bp %= Samples[c].len;
-		}
-		*/
-
-			vol = Samples[c].vol;
-			total += ((char)Samples[c].data[bp]) * (vol/64.0);
-
-			
-			statuscpy.pointer[s]+=statuscpy.phase[s];
-			ls = Samples[c].loop_start << 16;
-			le = Samples[c].loop_end   << 16;
-
-			if(le > ls && statuscpy.pointer[s] >= le ) {
-				statuscpy.pointer[s] = ls + (statuscpy.pointer[s]-le);
-			}
-
-		}
-
-		if (total < -128) {
-			total = -128;
-		}
-		if (total > 127) {
-				total = 127;
-		}
-
-		stream[i] = total+128;
-		
-		
-	}
-
-	update_sampler_pointers(&statuscpy);
-}
-
 
 int init_new()
 {

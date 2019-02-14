@@ -15,16 +15,21 @@ void extract_channel_data(
 typedef struct {
 } RowParams;
 
-void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8], uint8_t tick);
+void set_note_ex2(
+		SamplerStatus *smpst,
+		uint16_t period[8],
+		uint8_t note[8],
+		uint8_t smp[8],
+		uint8_t volume[8],
+		uint32_t offset[8],
+		uint8_t tick);
 
-int generate_audio(size_t ns);
-void apply_fx(int16_t perinc[8], int8_t volinc[8]);
+int generate_audio(SamplerStatus *smpst, size_t ns);
+void apply_fx(SamplerStatus *smpst, int16_t perinc[8], int8_t volinc[8]);
 
-void adjust_period(uint8_t ch, int8_t value);
-void adjust_volume(uint8_t ch, int8_t value);
+void adjust_period(SamplerStatus *smpst, uint8_t ch, int8_t value);
+void adjust_volume(SamplerStatus *smpst, uint8_t ch, int8_t value);
 
-extern struct _SamplerStatus SamplerGlobalStatus;
-extern struct _Sample Samples[31];
 extern float freq_tab[12];
 extern float oct_tab[12]; 
 
@@ -67,7 +72,6 @@ void PipeSend(Pipe *pipe, uint8_t *src, size_t len)
 //		printf("After: %lu (%lu)\n", len-i, pipe->len);
 	}
 	SDL_UnlockMutex(pipe->lock);
-
 }
 
 size_t PipeReceive(Pipe *pipe, uint8_t *dest, size_t len)
@@ -106,6 +110,8 @@ static void push_event(uint8_t seq, uint8_t pat, uint8_t pos)
 	}
 }
 
+SamplerStatus eSamplerStatus;
+
 uint8_t instru[8] = {0,0,0,0, 0,0,0,0};
 uint8_t effect[8] = {0,0,0,0, 0,0,0,0};
 uint8_t evalue[8] = {0,0,0,0, 0,0,0,0};
@@ -130,12 +136,16 @@ int16_t loop_point[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
 int8_t loop_count[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
 int8_t row_delay = -1;
 
+
+
 /* Very simple thread - counts 0 to 9 delaying 50ms between increments */
 static int SequencerThread(void *ptr)
 {
     int cnt = 0;
     SequencerData *s=(SequencerData *)ptr;
 
+    SamplerStatus *smpst = &eSamplerStatus;
+    smpst->smpdata = s->smpdata;
  
 	int n=0, o_n=-1;
 	uint8_t ticks = 6;
@@ -286,10 +296,10 @@ static int SequencerThread(void *ptr)
 				case 0xE:
 					switch ((evalue[j]>>4)) {
 					case 0x1:
-						adjust_period(j, evalue[j]&0xF);
+						adjust_period(smpst, j, evalue[j]&0xF);
 					break;
 					case 0x2:
-						adjust_period(j, -(evalue[j]&0xF));
+						adjust_period(smpst, j, -(evalue[j]&0xF));
 					break;
 					case 0x6:
 						{
@@ -323,10 +333,10 @@ static int SequencerThread(void *ptr)
 						}	
 					break;
 					case 0xA:
-					      adjust_volume(j, evalue[j]&0xF);
+					      adjust_volume(smpst, j, evalue[j]&0xF);
 					break;
 					case 0xB:
-					      adjust_volume(j, -(evalue[j]&0xF));
+					      adjust_volume(smpst, j, -(evalue[j]&0xF));
 					break;
 					case 0xC:
 						note_cut[j]=evalue[j]&0xF;
@@ -373,10 +383,10 @@ static int SequencerThread(void *ptr)
 			size_t ns = (float)(delta * 22.050);
 
 			for(t=0;t<ticks;t++) {
-				set_note_ex2(period, pitch, instru, volume, offset, t);
+				set_note_ex2(smpst, period, pitch, instru, volume, offset, t);
 
-				generate_audio(ns);
-				apply_fx(perinc, volinc);
+				generate_audio(smpst, ns);
+				apply_fx(smpst, perinc, volinc);
 			}
 
 			if (row_delay>0) {
@@ -523,7 +533,7 @@ float arpeggio_table[16] = {
 
 extern int16_t mod_sine[64];
 
-int16_t note_vibrato(uint8_t ch)
+int16_t note_vibrato(SamplerStatus *smpst, uint8_t ch)
 {
 	int16_t offset = 0;
 	int16_t depth  = note_vib[ch] & 0xF;
@@ -541,11 +551,11 @@ int16_t note_vibrato(uint8_t ch)
 	vibrato_ptr[ch] = (vibrato_ptr[ch]+speed)&0x3F;
 
 
-	if (SamplerGlobalStatus.sample[ch]!=-1) {
-		tune = Samples[SamplerGlobalStatus.sample[ch]].tune%16;
+	if (smpst->sample[ch]!=-1) {
+		tune = smpst->smpdata[smpst->sample[ch]].tune%16;
 	}
 
-	p = SamplerGlobalStatus.period[ch] ;
+	p = smpst->period[ch] ;
 	p += offset;
 
 	if (p>4096 || p<113) {
@@ -556,19 +566,18 @@ int16_t note_vibrato(uint8_t ch)
 		p=856;
 	}
 
-	SamplerGlobalStatus.phase[ch]  = period_phase[p]*fine_tune[tune];
-
+	smpst->phase[ch]  = period_phase[p]*fine_tune[tune];
 	
 	return offset;
 }
 
-void note_arpeggio(uint8_t ch, uint8_t tick)
+void note_arpeggio(SamplerStatus *smpst, uint8_t ch, uint8_t tick)
 {
 	float mod = 1.0;
 	uint8_t tune = 0;
 
-	if (SamplerGlobalStatus.sample[ch]!=-1) {
-		tune = Samples[SamplerGlobalStatus.sample[ch]].tune%16;
+	if (smpst->sample[ch]!=-1) {
+		tune = smpst->smpdata[smpst->sample[ch]].tune%16;
 	}
 
 	switch (tick%3) {
@@ -583,11 +592,17 @@ void note_arpeggio(uint8_t ch, uint8_t tick)
 		break;
 	}
 
-	uint32_t period = SamplerGlobalStatus.period[ch];
-	SamplerGlobalStatus.phase[ch]  = period_phase[period]*fine_tune[tune]*mod;
+	uint32_t period = smpst->period[ch];
+	smpst->phase[ch]  = period_phase[period]*fine_tune[tune]*mod;
 }
 
-void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t volume[8], uint32_t offset[8], uint8_t tick)
+void set_note_ex2(SamplerStatus *smpst,
+	       	  uint16_t period[8], 
+		  uint8_t note[8], 
+		  uint8_t smp[8], 
+		  uint8_t volume[8], 
+		  uint32_t offset[8], 
+		  uint8_t tick)
 {
 	int i;
 
@@ -598,17 +613,17 @@ void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t v
 		int16_t period_offset = 0;
 
 		if (note_vib[i]!=0) {
-			period_offset = note_vibrato(i);
+			period_offset = note_vibrato(smpst, i);
 		}
 
 		if (tick != 0 && note_arp[i]!=0) {
-			note_arpeggio(i, tick);
+			note_arpeggio(smpst, i, tick);
 		}
 
 		if (tick != 0 && tick == note_cut[i]) {
-			//SamplerGlobalStatus.period[i] = 0;
-			//SamplerGlobalStatus.phase[i] = 0;
-			SamplerGlobalStatus.volume[i] = 0;
+			//smpst->period[i] = 0;
+			//smpst->phase[i] = 0;
+			smpst->volume[i] = 0;
 			continue;
 		}
 
@@ -617,18 +632,18 @@ void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t v
 		}
 
 		if(smp[i]!=0) {
-			SamplerGlobalStatus.sample[i]  = smp[i]-1;
+			smpst->sample[i]  = smp[i]-1;
 			
 			if (volume[i]==0xFF) {
-				SamplerGlobalStatus.volume[i]  = Samples[smp[i]-1].vol;
+				smpst->volume[i]  = smpst->smpdata[smp[i]-1].vol;
 			} 
 			else {
-				SamplerGlobalStatus.volume[i]  = volume[i];
+				smpst->volume[i]  = volume[i];
 			}
 			retrigger = 1;
 		} else {
 			if( volume[i]!=0xFF) {
-				SamplerGlobalStatus.volume[i]  = volume[i];
+				smpst->volume[i]  = volume[i];
 			}
 		}
 
@@ -636,11 +651,11 @@ void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t v
 			uint8_t tune = 0;
 			uint16_t p = period[i];
 
-			if (SamplerGlobalStatus.sample[i]!=-1) {
-				tune = Samples[SamplerGlobalStatus.sample[i]].tune%16;
+			if (smpst->sample[i]!=-1) {
+				tune = smpst->smpdata[smpst->sample[i]].tune%16;
 			}
 
-			SamplerGlobalStatus.period[i] = p;
+			smpst->period[i] = p;
 			p += period_offset;
 
 			if (p>4096 || p<113) {
@@ -651,115 +666,114 @@ void set_note_ex2(uint16_t period[8], uint8_t note[8], uint8_t smp[8], uint8_t v
 				p=856;
 			}
 
-			SamplerGlobalStatus.phase[i]  = period_phase[p]*fine_tune[tune];
+			smpst->phase[i]  = period_phase[p]*fine_tune[tune];
 			retrigger = 1;
 		}
 
 		if (retrigger) {
-			SamplerGlobalStatus.pointer[i] = (offset[i]!=1) ? offset[i]<<16 : 0;
-		}	
+			smpst->pointer[i] = (offset[i]!=1) ? offset[i]<<16 : 0;
+		}
 	}
 }
 
-void apply_fx(int16_t perinc[8], int8_t volinc[8])
+void apply_fx(SamplerStatus *smpst, int16_t perinc[8], int8_t volinc[8])
 {
 	int i;
 	for(i=0;i<8;i++)
 	{
 		int calc_phase = 0;
 		if (slide[i]!=0 && slideto[i]!=0) {
-			if( SamplerGlobalStatus.period[i] > slideto[i]) {
-				printf("Slide Up   [%d]: %d ==>(%d)==> %d\n",i, SamplerGlobalStatus.period[i], slide[i], slideto[i]);
+			if( smpst->period[i] > slideto[i]) {
+				printf("Slide Up   [%d]: %d ==>(%d)==> %d\n",i, smpst->period[i], slide[i], slideto[i]);
 
-				SamplerGlobalStatus.period[i] -= slide[i];
-				if (SamplerGlobalStatus.period[i] < slideto[i]) {
-					SamplerGlobalStatus.period[i] = slideto[i];
+				smpst->period[i] -= slide[i];
+				if (smpst->period[i] < slideto[i]) {
+					smpst->period[i] = slideto[i];
 				}
 			}
-			else if (SamplerGlobalStatus.period[i] < slideto[i]) {
-				printf("Slide Down [%d]: %d ==>(%d)==> %d\n",i, SamplerGlobalStatus.period[i], slide[i], slideto[i]);
-				SamplerGlobalStatus.period[i] += slide[i];
-				if (SamplerGlobalStatus.period[i] > slideto[i]) {
-					SamplerGlobalStatus.period[i] = slideto[i];
+			else if (smpst->period[i] < slideto[i]) {
+				printf("Slide Down [%d]: %d ==>(%d)==> %d\n",i, smpst->period[i], slide[i], slideto[i]);
+				smpst->period[i] += slide[i];
+				if (smpst->period[i] > slideto[i]) {
+					smpst->period[i] = slideto[i];
 				}
 			}
 
-			if (SamplerGlobalStatus.period[i]>4096 || SamplerGlobalStatus.period[i]<113) {
-				SamplerGlobalStatus.period[i]=113;
+			if (smpst->period[i]>4096 || smpst->period[i]<113) {
+				smpst->period[i]=113;
 			}
 
-			if (SamplerGlobalStatus.period[i]>856) {
-				SamplerGlobalStatus.period[i]=856;
+			if (smpst->period[i]>856) {
+				smpst->period[i]=856;
 			}
 
 			calc_phase = 1;
 		}
 
 		if (perinc[i]!=0) {
-			SamplerGlobalStatus.period[i]+=perinc[i];
+			smpst->period[i]+=perinc[i];
 
-			if (SamplerGlobalStatus.period[i]>4096 || SamplerGlobalStatus.period[i]<113) {
-				SamplerGlobalStatus.period[i]=113;
+			if (smpst->period[i]>4096 || smpst->period[i]<113) {
+				smpst->period[i]=113;
 			}
 
-			if (SamplerGlobalStatus.period[i]>856) {
-				SamplerGlobalStatus.period[i]=856;
+			if (smpst->period[i]>856) {
+				smpst->period[i]=856;
 			}
 
-			printf("Period[%i] = (%d) %d\n", i, perinc[i], SamplerGlobalStatus.period[i]);
+			printf("Period[%i] = (%d) %d\n", i, perinc[i], smpst->period[i]);
 			calc_phase = 1;
 		}
 
 		if (calc_phase) {
 			uint8_t tune = 0;
-			if (SamplerGlobalStatus.sample[i]!=-1) {
-				tune = Samples[ SamplerGlobalStatus.sample[i] ].tune%16;
+			if (smpst->sample[i]!=-1) {
+				tune = smpst->smpdata[ smpst->sample[i] ].tune%16;
 			}
-			SamplerGlobalStatus.phase[i] = period_phase[ SamplerGlobalStatus.period[i] ] * fine_tune[tune];
+			smpst->phase[i] = period_phase[ smpst->period[i] ] * fine_tune[tune];
 		}
 		if (volinc[i]!=0) {
-			SamplerGlobalStatus.volume[i]+=volinc[i];
-	//		printf("Volume (%d) %d\n", volinc[i], SamplerGlobalStatus.volume[i]);
-			if(SamplerGlobalStatus.volume[i]>127) {
-				SamplerGlobalStatus.volume[i] = 0;
-			} else if(SamplerGlobalStatus.volume[i]>64) {
-				SamplerGlobalStatus.volume[i] = 64;
+			smpst->volume[i]+=volinc[i];
+	//		printf("Volume (%d) %d\n", volinc[i], smpst->volume[i]);
+			if(smpst->volume[i]>127) {
+				smpst->volume[i] = 0;
+			} else if(smpst->volume[i]>64) {
+				smpst->volume[i] = 64;
 			}
 		}
 	}
 }
 
-void adjust_period(uint8_t ch, int8_t value)
+void adjust_period(SamplerStatus *smpst, uint8_t ch, int8_t value)
 {
 	uint8_t tune = 0;
-	SamplerGlobalStatus.period[ch]+=value;
+	smpst->period[ch]+=value;
 
-	if (SamplerGlobalStatus.period[ch]>4096 || SamplerGlobalStatus.period[ch]<113) {
-		SamplerGlobalStatus.period[ch]=113;
+	if (smpst->period[ch]>4096 || smpst->period[ch]<113) {
+		smpst->period[ch]=113;
 	}
 
-	if (SamplerGlobalStatus.period[ch]>856) {
-		SamplerGlobalStatus.period[ch]=856;
+	if (smpst->period[ch]>856) {
+		smpst->period[ch]=856;
 	}
 
-	printf("Period[%i] = (%d) %d\n", ch, value, SamplerGlobalStatus.period[ch]);
+	printf("Period[%i] = (%d) %d\n", ch, value, smpst->period[ch]);
 
-	if (SamplerGlobalStatus.sample[ch]!=-1) {
-		tune = Samples[ SamplerGlobalStatus.sample[ch] ].tune%16;
+	if (smpst->sample[ch]!=-1) {
+		tune = smpst->smpdata[ smpst->sample[ch] ].tune%16;
 	}
-	SamplerGlobalStatus.phase[ch] = period_phase[ SamplerGlobalStatus.period[ch] ] * fine_tune[tune];
+	smpst->phase[ch] = period_phase[ smpst->period[ch] ] * fine_tune[tune];
 }
 
-void adjust_volume(uint8_t ch, int8_t value)
+void adjust_volume(SamplerStatus *smpst, uint8_t ch, int8_t value)
 {
-	SamplerGlobalStatus.volume[ch]+=value;
-	printf("Volume (%d) %d\n", value, SamplerGlobalStatus.volume[ch]);
-	if(SamplerGlobalStatus.volume[ch]>127) {
-		SamplerGlobalStatus.volume[ch] = 0;
-	} else if(SamplerGlobalStatus.volume[ch]>64) {
-		SamplerGlobalStatus.volume[ch] = 64;
+	smpst->volume[ch]+=value;
+	printf("Volume (%d) %d\n", value, smpst->volume[ch]);
+	if(smpst->volume[ch]>127) {
+		smpst->volume[ch] = 0;
+	} else if(smpst->volume[ch]>64) {
+		smpst->volume[ch] = 64;
 	}
-
 }
 
 
@@ -768,7 +782,7 @@ void adjust_volume(uint8_t ch, int8_t value)
 
 Uint8 audbuffer[AUDBUFFERSZ];
 
-int generate_audio(size_t ns)
+int generate_audio(SamplerStatus *smpst, size_t ns)
 {
 	float chmix[8];
 	while(ns)
@@ -780,40 +794,40 @@ int generate_audio(size_t ns)
 		}
 		ns -= len/2;
 
-		for(i=0;i<len;i++) 
+		for(i=0;i<len;i++)
 		{
 			int s;
 			int chleft = 0, chright = 0;
 			for (s = 0; s<8;s++) {
 				chmix[s]=0.0;
-				int c = SamplerGlobalStatus.sample[s];
-				uint32_t bp = SamplerGlobalStatus.pointer[s] >> 16;
-				uint32_t ph = SamplerGlobalStatus.phase[s];
+				int c = smpst->sample[s];
+				uint32_t bp = smpst->pointer[s] >> 16;
+				uint32_t ph = smpst->phase[s];
 				uint32_t le, ls;
 				float vol = 1.0;
 				int a = 0;
 
-				if (ph == 0 || c < 0 || Samples[c].len < 1 || bp >= Samples[c].len) {
+				if (ph == 0 || c < 0 || smpst->smpdata[c].len < 1 || bp >= smpst->smpdata[c].len) {
 					continue;
 				}
 
 		/*
-		if (bp >= Samples[c].len)
+		if (bp >= smpst->smpdata[c].len)
 		{
-			bp %= Samples[c].len;
+			bp %= smpst->smpdata[c].len;
 		}
 		*/
 
-				vol = SamplerGlobalStatus.volume[s];
-				chmix[s] = ((char)Samples[c].data[bp]) * (vol/64.0);
+				vol = smpst->volume[s];
+				chmix[s] = ((char)(smpst->smpdata[c].data[bp])) * (vol/64.0);
 
 			
-				SamplerGlobalStatus.pointer[s]+=SamplerGlobalStatus.phase[s];
-				ls = Samples[c].loop_start << 16;
-				le = Samples[c].loop_end   << 16;
+				smpst->pointer[s]+=smpst->phase[s];
+				ls = smpst->smpdata[c].loop_start << 16;
+				le = smpst->smpdata[c].loop_end   << 16;
 
-				if(le > ls && SamplerGlobalStatus.pointer[s] >= le ) {
-					SamplerGlobalStatus.pointer[s] = ls + (SamplerGlobalStatus.pointer[s]-le);
+				if(le > ls && smpst->pointer[s] >= le ) {
+					smpst->pointer[s] = ls + (smpst->pointer[s]-le);
 				}
 
 			}
