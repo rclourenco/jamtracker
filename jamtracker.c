@@ -1,6 +1,7 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <strings.h>
+#include <stdlib.h>
 #include "jamtracker.h"
 #include "graphlib.c"
 
@@ -13,6 +14,7 @@ SequencerData seqdta;
 
 //The event structure
 SDL_Event event;
+SDL_AudioDeviceID adev;
 
 Uint32 SequencerEvent;
 
@@ -29,8 +31,8 @@ unsigned char textbuffer[80*25];
 
 void textwrite(char *str)
 {
-	int scroll_start = 3;
-	int scroll_len = 19-scroll_start;
+	int scroll_start = 5;
+	int scroll_len = 22-scroll_start;
 	while(*str) {
 		if(*str=='\n') {
 			textx=0;
@@ -44,10 +46,10 @@ void textwrite(char *str)
 			}
 		}
 
-		if(texty>=20) {
+		if(texty>=23) {
 			memmove(&textbuffer[scroll_start*80], &textbuffer[(scroll_start+1)*80], 80*scroll_len*sizeof(unsigned char));
-			memset(&textbuffer[19*80], 0, 80*sizeof(unsigned char));
-			texty=19;
+			memset(&textbuffer[22*80], 0, 80*sizeof(unsigned char));
+			texty=22;
 			textx=0;
 		}
 
@@ -57,7 +59,7 @@ void textwrite(char *str)
 
 SDL_mutex *mutex;
 
-void apply_surface()
+void apply_surface(int seq, int pat, int pos)
 {
 	#define SHAPE_W 16
 	#define SHAPE_H 16
@@ -99,13 +101,31 @@ void apply_surface()
 			DestR.w = 32;
 			DestR.h = 25;
 			pchar(DestR.x, DestR.y, vo);
-			//SDL_RenderCopy(renderer, background, &SrcR, &DestR);
 		}
 	}
-	graph_refresh();
-	//rotate_palette();
-//	SDL_RenderPresent(renderer);
 
+	char buffer[128];
+
+	TextColor=10;
+
+	writest(0, 176, "\xDA\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xBF");
+
+
+	if(seq == -1) {
+		sprintf(buffer, "%c Position: -- %c Pattern: -- %c Row: -- %c", 179, 179, 179, 179);
+	} else {
+		sprintf(buffer, "%c Position: %02X %c Pattern: %02X %c Row: %02X %c", 179, seq, 179, pat, 179, pos, 179);
+	}
+
+	writest(0, 184, buffer);
+
+	writest(0, 192, "\xC0\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC1\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC1\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xD9");
+
+	graph_refresh();
 }
 
 void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
@@ -132,20 +152,34 @@ void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 //	sprintf(data, "%d %d %d\n", seq, pat, pos);
 //	printf(">>> %s", data);
 //	textwrite(data);
-	apply_surface();
+	apply_surface(seq, pat, pos);
 }
 
 
 int main_loop_old();
 int main_loop_new();
 int load_files_new();
-int init_new();
+int init_new(int audio_device);
 
 void cleanup_new();
 
 int main( int argc, char *args[])
 {
 	MusicModule *mm;
+	int audio_device = 0;
+
+	if (argc > 2) {
+		audio_device = atoi(args[2]);
+
+		printf("Audio Device: %d\n", audio_device);
+	}
+
+    if( init_new(audio_device) == 0 )
+    {
+        return 1;
+    }
+
+
 	if( argc > 1 )
 	{
 		mm = musmod_load(args[1]);
@@ -185,10 +219,6 @@ int main( int argc, char *args[])
 
 	printf("INIT now\n");
     //Initialize
-    if( init_new() == 0 )
-    {
-        return 1;
-    }
     
     SequencerEvent = SDL_RegisterEvents(1);
 
@@ -199,7 +229,7 @@ int main( int argc, char *args[])
     }
 
     printf("Ready!\n");
-    textwrite("   # JAMTRACKER #\n\n");
+    textwrite("             # JAMTRACKER #\n\n");
 	int i;
 
 	for(i=19;i>=0; i--) {
@@ -211,14 +241,15 @@ int main( int argc, char *args[])
 	}
 	int ns = strlen(mm->name);
 	char tmp[128];
-	if (ns<20) {
-		sprintf(tmp, "%*s\n", ns+(20-ns)/2, mm->name);
-	}
-	else {
-		sprintf(tmp, "%s\n", mm->name);
-	}
+//	if (ns<20) {
+//		sprintf(tmp, "Name: %*s\n\n", ns+(20-ns)/2, mm->name);
+//	}
+//	else {
+		sprintf(tmp, " Name: %s\n\n", mm->name);
+//	}
 	textwrite(tmp);
-    apply_surface();
+	textwrite("\n");
+    apply_surface(-1,-1,-1);
 
     main_loop_new();
 
@@ -240,7 +271,7 @@ int main_loop_new()
 {
 	int quit = 0;
 
- 	SDL_PauseAudio(0); /* start audio playing. */
+ 	SDL_PauseAudioDevice(adev, 0); /* start audio playing. */
 	int smp = 0;
 	start_sequencer(&seqdta);	
 	while(!quit)
@@ -330,8 +361,8 @@ int main_loop_new()
   			}
 		}
 	}
-	SDL_PauseAudio(1);
-	SDL_CloseAudio();
+	SDL_PauseAudioDevice(adev, 1);
+	SDL_CloseAudioDevice(adev);
 	return 1;
 }
 
@@ -360,7 +391,7 @@ void audio_callback2(void *userdata, Uint8 *stream, int len)
 
 struct _SamplerStatus statuscpy;
 
-int init_new()
+int init_new(int audio_device)
 {
     //Initialize all SDL subsystems
     if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
@@ -374,15 +405,29 @@ int init_new()
   		return 0;
 	}
 
-	set_window_name("Jamtrack I");
-	modo13h();
-
-
 	int i, count = SDL_GetNumAudioDevices(0);
 
+	char *device_str = NULL;
+	char devname[256];
+
 	for (i = 0; i < count; ++i) {
-    		SDL_Log("Audio device %d: %s", i, SDL_GetAudioDeviceName(i, 0));
+			const char *tmp = SDL_GetAudioDeviceName(i, 0);
+
+			if (i==audio_device) {
+				strncpy(devname, tmp, 255);
+				devname[255] = '\0'; 
+				device_str = devname;
+
+	    		SDL_Log("[x] Audio device %d: %s", i, tmp);
+			}
+			else {
+				SDL_Log("[ ] Audio device %d: %s", i, tmp);
+			}
 	}
+
+
+	set_window_name("Jamtrack I");
+	modo13h();
 
 
 	SDL_AudioSpec want, have;
@@ -394,9 +439,11 @@ int init_new()
 	want.samples = 1024;
 	//want.callback = audio_callback; /* you wrote this function elsewhere -- see SDL_AudioSpec for details */
 	want.callback = audio_callback2;
-//	SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
-if (SDL_OpenAudio(&want, &have) < 0) {
+//
+	adev = SDL_OpenAudioDevice(device_str, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+
+if (adev == 0) {
     printf("Failed to open audio: %s\n", SDL_GetError());
     return 0;
 } else {
