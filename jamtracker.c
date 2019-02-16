@@ -64,16 +64,19 @@ void apply_surface(int seq, int pat, int pos)
 	#define SHAPE_W 16
 	#define SHAPE_H 16
 	#define SHAPE_SIZE 16
-	int yi = 70;
+	int yi = 68;
 	int nr = 13;
 	int nr2 = 6;
 
 	int i,j;
 	SDL_Rect SrcR;
 	SDL_Rect DestR;
+	TextBackGround=255;
 	TextColor=14;
-    	fillscreen(0x0);
-	writest(100, 20, "JamTracker");
+	FillColor=17;
+	FillArea(1, yi-4, 318, yi+107, 17);
+    	//fillscreen(0x0);
+	//writest(100, 20, "JamTracker");
 
 	char buffer[128];
 
@@ -100,13 +103,13 @@ void apply_surface(int seq, int pat, int pos)
 	}
 
 	Color = 2;
-	DrawRect(2, yi-3, 316, yi+106, LINE);
+	DrawRect(2, yi-3, 317, yi+106, LINE);
 	DrawLine(27, yi-2, 27, yi+105);
 	DrawLine(99, yi-2, 99, yi+105);
 	DrawLine(171, yi-2, 171, yi+105);
 	DrawLine(244, yi-2, 244, yi+105);
 
-
+	TextBackGround=0;
 	TextColor=32;
 
 	writest(0, 176, "\xDA\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
@@ -129,6 +132,34 @@ void apply_surface(int seq, int pat, int pos)
 	graph_refresh();
 }
 
+void show_song(MusicModule *mm)
+{
+	fillscreen(0);
+	FillArea(40, 30, 279, 50, 17);
+	Color=32;
+	DrawLine(40, 30, 279, 30);
+	DrawLine(40, 30, 40, 50);
+	Color=1;
+	DrawLine(40, 50, 279, 50);
+	DrawLine(279, 30, 279, 50);
+
+	TextBackGround=255;
+	TextColor=19;
+	writest(120,10, "JamTracker");
+	TextColor=40;
+	writest(121,11, "JamTracker");
+
+	TextColor=46;
+
+	if (mm) {
+		int l = strlen(mm->name);
+		TextColor=20;
+		writest(39+(15-l/2)*8, 35, mm->name);
+		TextColor=46;
+		writest(40+(15-l/2)*8, 36, mm->name);
+	}
+	graph_refresh();
+}
 void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 {
 	apply_surface(seq, pat, pos);
@@ -136,7 +167,8 @@ void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 
 
 int main_loop_old();
-int main_loop_new();
+int main_loop_new(MusicModuleList *mml);
+
 int load_files_new();
 int init_new(int audio_device);
 
@@ -144,7 +176,9 @@ void cleanup_new();
 
 int main( int argc, char *args[])
 {
-	MusicModule *mm;
+	MusicModule *mm = NULL;
+	MusicModuleList *mml = NULL;
+
 	int audio_device = 0;
 
 	if (argc > 2) {
@@ -161,15 +195,27 @@ int main( int argc, char *args[])
 
 	if( argc > 1 )
 	{
-		mm = musmod_load(args[1]);
+		mml = musmod_open_list(args[1]);
+
+		if (!mml)
+			return 2;
+
+		printf("__________________\n");
+
+		mm = musmod_list_next(mml);
+
 
 		printf("XXXXXXXXXX\n");
 	
 		if(mm==NULL) {
-			return 0;
+			return 2;
 		}
+
 	}
 	
+	if (mm == NULL) {
+		return 1;
+	}
 	/*
 	debug dump pattern
 	*/
@@ -228,9 +274,10 @@ int main( int argc, char *args[])
 //	}
 	textwrite(tmp);
 	textwrite("\n");
+	show_song(mm);
     apply_surface(-1,-1,-1);
 
-    main_loop_new();
+    main_loop_new(mml);
 
     cleanup_new();
 
@@ -246,7 +293,7 @@ float freq_tab[12]={
 
 float oct_tab[12]={0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0};
 
-int main_loop_new()
+int main_loop_new(MusicModuleList *mml)
 {
 	int quit = 0;
 
@@ -264,8 +311,20 @@ int main_loop_new()
 
 		if (sp==-1)
 		{
-			quit = 1;
-			break;
+			MusicModule *mm = musmod_list_next(mml);
+			if (mm) {
+				seqdta.patterns = mm->patterns;
+				seqdta.npat = mm->lps; 
+				seqdta.seq  = mm->ms.seq;
+				seqdta.nseq = mm->ms.np;
+				seqdta.smpdata = mm->samples;
+				show_song(mm);
+				sequence_start();
+			} else {
+			//	sequence_shutdown();
+				quit = 1;
+				break;
+			}
 		}
 	        //While there's events to handle
 		if( SDL_WaitEventTimeout( &event, 40 ) )
@@ -297,46 +356,16 @@ int main_loop_new()
 			{
 			case SDLK_SPACE:
 				sequence_start();
-			break;
-			case SDLK_UP: if(smp<30) smp++; break;
-			case SDLK_DOWN: if(smp>0) smp--; break;
-			case SDLK_q:sl=12; break;
-			case SDLK_2:sl=13; break;
-			case SDLK_w:sl=14; break;
-			case SDLK_3:sl=15; break;
-	    		case SDLK_e:sl=16; break;
-			case SDLK_r:sl=17; break;
-			case SDLK_5:sl=18; break;
-			case SDLK_t:sl=19; break;
-			case SDLK_6:sl=20; break;
-			case SDLK_y:sl=21; break;
-			case SDLK_7:sl=22; break;
-			case SDLK_u:sl=23; break;
-			case SDLK_i:sl=24; break;
-			case SDLK_9:sl=25; break;
-			case SDLK_o:sl=26; break;
-			case SDLK_0:sl=27; break;
-			case SDLK_p:sl=28; break;
-
-			case SDLK_z:sl=0; break;
-			case SDLK_s:sl=1; break;
-			case SDLK_x:sl=2; break;
-			case SDLK_d:sl=3; break;
-			case SDLK_c:sl=4; break;
-
-			case SDLK_v:sl=5; break;
-			case SDLK_g:sl=6; break;
-			case SDLK_b:sl=7; break;
-			case SDLK_h:sl=8; break;
-			case SDLK_n:sl=9; break;
-			case SDLK_j:sl=10; break;
-			case SDLK_m:sl=11; break;
-		/*	case SDLK_x:sl=12; break;
-			case SDLK_c:sl=13; break;
-			case SDLK_v:sl=14; break;
-			case SDLK_b:sl=15; break;
-			case SDLK_n:sl=16; break;
-			case SDLK_m:sl=17; break;*/
+				break;
+			case SDLK_0:
+				set_fullscreen(0);
+				break;
+			case SDLK_1:
+				set_fullscreen(1);
+				break;
+			case SDLK_2:
+				set_fullscreen(2);
+				break;
 			default: break;
 			}
 

@@ -142,10 +142,180 @@ MusicModule *musmod_load(char *modfile)
 	return mm;
 failure:
 	if(mm) {
+		for(i=0;i<mm->nsamples;i++)
+		{
+			if (mm->samples[i].data)
+				free(mm->samples[i].data);
+		}
+
 		free(mm);
 	}
 	fclose(fp);
 	return NULL;
 }
 
+void musmod_free(MusicModule *mm)
+{
+	int i;
+	if(mm) {
+		for(i=0;i<mm->nsamples;i++)
+		{
+			if (mm->samples[i].data)
+				free(mm->samples[i].data);
+		}
+		free(mm);
+	}
+}
 
+int readline(char *buffer, size_t len, FILE *fp)
+{
+	int ch;
+	int c=0;
+	while( (ch=fgetc(fp))!=EOF && ch!='\n' ) {
+		if (c<len) {
+			*buffer = ch;
+			buffer++;
+		}
+		c++;
+	}
+	*buffer='\0';
+	return c;
+}
+
+MusicModuleList *musmod_open_list(const char *list)
+{
+	FILE *fp = NULL;
+	char *s = NULL;
+	char buffer[256];
+	int lines = 0;
+
+	if (!list)
+		return NULL;
+
+	MusicModuleList *mml = (MusicModuleList *)malloc( sizeof(MusicModuleList));
+	if (!mml)
+		return NULL;
+	mml->len = 0;
+	mml->pos = 0;
+	mml->list = NULL;
+	mml->cur = NULL;
+
+	s = strstr(list, ".pls");
+
+	if (!s || strcmp(s, ".pls")) {
+
+		mml->list = (char **)malloc(sizeof(char *));
+		if (!mml->list)
+			goto failure;
+
+		mml->len = 1;
+		mml->list[0] = strdup(list);
+		if (!mml->list[0])
+			goto failure;
+
+		return mml;
+	}
+
+	fp = fopen(list, "rt");
+	if (!fp)
+		goto failure;
+
+	while(!feof(fp)) {
+		if (readline(buffer, 255, fp))
+			lines++;
+	}
+	rewind(fp);
+	printf("Lines %d\n", lines);
+	if (lines == 0)
+		goto failure;
+
+	mml->list = (char **) malloc(sizeof(char *)*lines);
+	if (!mml->list)
+			goto failure;
+
+	mml->len = 0;
+
+	while(!feof(fp)) {
+		if (readline(buffer, 255, fp)) {
+			size_t p = mml->len;
+
+			if (p>lines)                //should never happen
+				goto failure; 
+
+			mml->list[p] = strdup(buffer);
+			if (!mml->list[p])
+				goto failure;
+			mml->len++;
+		}
+	}
+
+	int i;
+	for(i=0;i<mml->len;i++)
+	{
+		printf("> %s\n", mml->list[i]);
+	}
+
+	fclose(fp);
+	return mml;
+
+failure:
+	if (fp)
+		fclose(fp);
+	if (mml) {
+		int i;
+		if (mml->list) {
+			for(i=0;i<mml->len; i++)
+			{
+				if (mml->list[i])
+					free(mml->list[i]);
+			}
+			free(mml->list);
+		}
+		free(mml);
+	}
+
+	return NULL;
+}
+
+MusicModule *musmod_list_next(MusicModuleList *mml)
+{
+	if (!mml)
+		return NULL;
+
+	if (mml->cur) {
+		musmod_free(mml->cur);
+		mml->cur = NULL;
+	}
+
+	while (mml->pos < mml->len) {
+		mml->cur = musmod_load(mml->list[mml->pos]);
+		mml->pos++;
+
+		if (mml->cur!=NULL)
+			return mml->cur;
+	}
+
+	return NULL;
+}
+
+void musmod_list_close(MusicModuleList *mml)
+{
+	if (mml) {
+		int i;
+
+		if (mml->cur) {
+			musmod_free(mml->cur);
+		}
+
+		if (mml->list) {
+			for(i=0;i<mml->len; i++)
+			{
+				if (mml->list[i])
+					free(mml->list[i]);
+			}
+			free(mml->list);
+		}
+		free(mml);
+	}
+
+}

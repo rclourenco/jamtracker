@@ -35,5 +35,16 @@ typedef struct {
 } MusicModule;
 
 MusicModule *musmod_load(char *modfile);
+void musmod_free(MusicModule *mm);
+
+typedef struct {
+	char **list;
+	size_t len;
+	size_t pos;
+	MusicModule *cur;
+} MusicModuleList;
+
+MusicModuleList *musmod_open_list(const char *list);
+MusicModule *musmod_list_next(MusicModuleList *mml);
 
 #endif

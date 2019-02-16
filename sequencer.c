@@ -176,7 +176,14 @@ void sequence_start()
 	SDL_UnlockMutex(lock_wait_start);
 }
 
-
+void sequence_ended()
+{
+	SDL_LockMutex(lock_wait_start);
+	if (sequence_started) {
+		sequence_started = SDL_FALSE;
+	}
+	SDL_UnlockMutex(lock_wait_start);
+}
 
 static int play_sequence(SequencerData *s);
 
@@ -188,16 +195,21 @@ static int SequencerThread(void *ptr)
 	{
 		sequence_wait_start();
 		play_sequence(s);
-		break;
+		sequence_ended();
+		//break;
 	}
 	return 0;
 }
+
+
 
 static int play_sequence(SequencerData *s)
 {
     int cnt = 0;
 
     SamplerStatus *smpst = &eSamplerStatus;
+    memset(smpst, 0, sizeof(SamplerStatus));
+
     smpst->smpdata = s->smpdata;
  
 	int n=0, o_n=-1;
@@ -207,6 +219,34 @@ static int play_sequence(SequencerData *s)
 	unsigned int lastTime = currentTime;
 	int i=0, j;
 	int16_t cursor=0;
+
+	for (j=0;j<8;j++)
+	{
+		instru[j] = 0;
+		effect[j] = 0;
+		evalue[j] = 0;
+		pitch[j]  = 0;
+		volume[j] = 0;
+		offset[j] = 1;
+		period[j] = 0;
+		volinc[j] = 0;
+		perinc[j] = 0;
+		slide[j]   = 0;
+		slideto[j] = 0;
+
+		note_delay[j] = 0;
+		note_cut[j]   = 0;
+
+		note_vib[j]  = 0;
+		note_arp[j]  = 0;
+
+		vibrato_ptr[j] = 0;
+
+		loop_point[j] = -1;
+		loop_count[j] = -1;
+	}
+	row_delay = -1;
+
 	while(1) {
 		int j;
 		int next_step;

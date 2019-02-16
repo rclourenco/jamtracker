@@ -121,6 +121,24 @@ _abort:
 	return 0;
 }
 
+void set_fullscreen(int x)
+{
+	if (!GraphSystem.win)
+		return;
+
+	switch(x)
+	{
+	case 0:
+		SDL_SetWindowFullscreen(GraphSystem.win, 0);
+		break;
+	case 1:
+		SDL_SetWindowFullscreen(GraphSystem.win, SDL_WINDOW_FULLSCREEN);
+		break;
+	case 2:
+		SDL_SetWindowFullscreen(GraphSystem.win, SDL_WINDOW_FULLSCREEN_DESKTOP);
+
+	}
+}
 void modo3h()
 {
 	if (dscreen) {
@@ -241,6 +259,30 @@ void DrawRect(int x1,int y1,int x2,int y2,char op)
 		DrawPixel(x2,y,cor);
 	}
 }
+
+void FillArea(int x1,int y1,int x2,int y2,char cor)
+{
+	int y;
+
+	if(x1>x2) swap(&x1,&x2);
+	if(y1>y2) swap(&y1,&y2);
+
+	if (y1<0)
+		y1=0;
+	if (y2>=SCREEN_H)
+		y2=SCREEN_H-1;
+
+	if (x1<0)
+		y1=0;
+	if (x2>=SCREEN_W)
+		x2=SCREEN_W-1;
+
+	for(y=y1;y<=y2;y++) {
+		memset(&screen[y*SCREEN_W+x1], cor, x2-x1+1);
+	}
+}
+
+
 
 /*
 void DrawCircle(int x,int y,int r,char op)
