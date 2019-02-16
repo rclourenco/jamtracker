@@ -30,6 +30,19 @@ void apply_fx(SamplerStatus *smpst, int16_t perinc[8], int8_t volinc[8]);
 void adjust_period(SamplerStatus *smpst, uint8_t ch, int8_t value);
 void adjust_volume(SamplerStatus *smpst, uint8_t ch, int8_t value);
 
+SDL_atomic_t song_p;
+
+void set_song_position(int p)
+{
+	SDL_AtomicSet(&song_p, p);
+}
+
+int get_song_position()
+{
+	return SDL_AtomicGet(&song_p);
+}
+
+
 extern float freq_tab[12];
 extern float oct_tab[12]; 
 
@@ -163,7 +176,7 @@ static int SequencerThread(void *ptr)
 			cursor=0;
 
 		if (cursor >= s->nseq*64) {
-			push_event(0xFF, 0xFF, 0xFF);
+			set_song_position(-1);
     			cursor=0;
 			break;
 		}
@@ -375,9 +388,7 @@ static int SequencerThread(void *ptr)
 				}
 			}
 
-			//set_note_ex2(period, pitch, instru, volume, offset, t, trigger_at);
-		
-			push_event(n, pat, i);
+			set_song_position(n*0x10000+pat*0x100+i);
 		
 			int t;
 			size_t ns = (float)(delta * 22.050);

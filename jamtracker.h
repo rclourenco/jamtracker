@@ -29,7 +29,7 @@ int stop_sequencer();
 void dump_channel_item(ChannelItem *p);
 void set_note(uint8_t note, uint8_t smp);
 void dump_channel_item_str(char *dest, ChannelItem *p);
-
+int get_song_position();
 void set_note_ex(uint8_t note[8], uint8_t smp[8]);
 
 #define PIPESIZE 4096

@@ -273,22 +273,35 @@ int main_loop_new()
 
  	SDL_PauseAudioDevice(adev, 0); /* start audio playing. */
 	int smp = 0;
-	start_sequencer(&seqdta);	
+	start_sequencer(&seqdta);
+	int osp = -1;
 	while(!quit)
 	{
+		int sp = get_song_position();
+		if (sp!=-1 && sp != osp) {
+			update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF );
+			osp = sp;
+		}
+
+		if (sp==-1)
+		{
+			quit = 1;
+			break;
+		}
 	        //While there's events to handle
-		while( SDL_WaitEvent( &event ) )
+		if( SDL_WaitEventTimeout( &event, 20 ) )
         	{
 			if(event.type == SequencerEvent) {
 				if (event.user.code == 0x10FFFFFF) {
 					quit=1;
 					break;
 				} else {
-					update_status(
+	/*				update_status(
 								(event.user.code>>16) & 0xFF,
 								(event.user.code>>8) & 0xFF,
 								event.user.code & 0xFF
 							);
+	*/
 				}
 			}
 	            //If a key was pressed
