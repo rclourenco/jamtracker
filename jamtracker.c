@@ -64,49 +64,50 @@ void apply_surface(int seq, int pat, int pos)
 	#define SHAPE_W 16
 	#define SHAPE_H 16
 	#define SHAPE_SIZE 16
+	int yi = 70;
+	int nr = 13;
+	int nr2 = 6;
+
 	int i,j;
 	SDL_Rect SrcR;
 	SDL_Rect DestR;
 	TextColor=14;
-    fillscreen(0x1);	
-//	SDL_RenderClear(renderer);
-	for (i=0;i<80;i++) {
-		for(j=0;j<25;j++) {
-			unsigned char vo = textbuffer[j*80+i];
-			unsigned char v = vo;
-			if (v>='A' && v<='Z')
-				v = v - 'A' + 33;
-			else if(v>='a' && v<= 'z')
-				v = v - 'a' + 33;
-			else if(v>='0' && v<= '9')
-				v = v - '0' + 16;
-			else {
-				switch(v) {
-				case '-': v=13; break;
-				case '#': v=11; break;
-				default:
-					v = 0;
-				}
-			}
-			int cx = v%10;
-			int cy = (v/10);
-
-			SrcR.x = cx*32;
- 			SrcR.y = cy*25;
-			SrcR.w = 32;
-			SrcR.h = 25;
-
-			DestR.x = i*8;
-			DestR.y = j*8;
-			DestR.w = 32;
-			DestR.h = 25;
-			pchar(DestR.x, DestR.y, vo);
-		}
-	}
+    	fillscreen(0x0);
+	writest(100, 20, "JamTracker");
 
 	char buffer[128];
 
-	TextColor=10;
+	if (seq>=0 && pat>=0 && pos>=0) {
+    		for(i=0;i<nr;i++)
+		{
+			int row = pos - nr2 + i;
+			if (row<0 || row > 63) {
+				continue;
+			}
+
+			TextColor =  (row == pos) ? 40 : 7;
+
+			sprintf(buffer, "%02X", row);
+			writest(8, yi+i*8, buffer);
+
+
+			for (j=0;j<4;j++) {
+				ChannelItem *p = &(seqdta.patterns[pat].item[row*4+j]);
+				dump_channel_item_str(buffer, p);
+				writest(32+j*72, yi+i*8, buffer);
+			}
+		}
+	}
+
+	Color = 2;
+	DrawRect(2, yi-3, 316, yi+106, LINE);
+	DrawLine(27, yi-2, 27, yi+105);
+	DrawLine(99, yi-2, 99, yi+105);
+	DrawLine(171, yi-2, 171, yi+105);
+	DrawLine(244, yi-2, 244, yi+105);
+
+
+	TextColor=32;
 
 	writest(0, 176, "\xDA\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
 \xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
@@ -130,28 +131,6 @@ void apply_surface(int seq, int pat, int pos)
 
 void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
 {
-	char data[128];
-	int j;
-
-	sprintf(data, " %02X", pos);
-	textwrite(data);
-	for (j=0;j<4;j++) {
-		ChannelItem *p = &(seqdta.patterns[pat].item[pos*4+j]);
-
-		dump_channel_item_str(data, p);
-		textwrite(" ");
-		textwrite(data);
-		//textwrite(" ");
-//		if(j%2) {
-//			textwrite("\n");
-//		} else {
-//			textwrite(" ");
-//		}
-	}
-	textwrite("\n");
-//	sprintf(data, "%d %d %d\n", seq, pat, pos);
-//	printf(">>> %s", data);
-//	textwrite(data);
 	apply_surface(seq, pat, pos);
 }
 
@@ -278,7 +257,7 @@ int main_loop_new()
 	while(!quit)
 	{
 		int sp = get_song_position();
-		if (sp!=-1 && sp != osp) {
+		if (sp!=-1) {
 			update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF );
 			osp = sp;
 		}
@@ -289,7 +268,7 @@ int main_loop_new()
 			break;
 		}
 	        //While there's events to handle
-		if( SDL_WaitEventTimeout( &event, 20 ) )
+		if( SDL_WaitEventTimeout( &event, 40 ) )
         	{
 			if(event.type == SequencerEvent) {
 				if (event.user.code == 0x10FFFFFF) {
@@ -317,6 +296,7 @@ int main_loop_new()
 			switch(event.key.keysym.sym)
 			{
 			case SDLK_SPACE:
+				sequence_start();
 			break;
 			case SDLK_UP: if(smp<30) smp++; break;
 			case SDLK_DOWN: if(smp>0) smp--; break;

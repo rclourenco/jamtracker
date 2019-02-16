@@ -149,13 +149,53 @@ int16_t loop_point[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
 int8_t loop_count[8] = {-1,-1,-1,-1, -1,-1,-1,-1};
 int8_t row_delay = -1;
 
+SDL_bool sequence_started = SDL_FALSE;
 
+SDL_mutex *lock_wait_start;
+SDL_cond *cond_wait_start;
+
+
+void sequence_wait_start()
+{
+	printf("Wait for start...\n");
+	SDL_LockMutex(lock_wait_start);
+	while (!sequence_started) {
+        	SDL_CondWait(cond_wait_start, lock_wait_start);
+	}
+	SDL_UnlockMutex(lock_wait_start);
+}
+
+void sequence_start()
+{
+	printf("Start Received\n");
+	SDL_LockMutex(lock_wait_start);
+	if (!sequence_started) {
+		sequence_started = SDL_TRUE;
+		SDL_CondSignal(cond_wait_start);
+	}
+	SDL_UnlockMutex(lock_wait_start);
+}
+
+
+
+static int play_sequence(SequencerData *s);
 
 /* Very simple thread - counts 0 to 9 delaying 50ms between increments */
 static int SequencerThread(void *ptr)
 {
+	SequencerData *s = (SequencerData *)ptr;
+	while(1)
+	{
+		sequence_wait_start();
+		play_sequence(s);
+		break;
+	}
+	return 0;
+}
+
+static int play_sequence(SequencerData *s)
+{
     int cnt = 0;
-    SequencerData *s=(SequencerData *)ptr;
 
     SamplerStatus *smpst = &eSamplerStatus;
     smpst->smpdata = s->smpdata;
@@ -414,8 +454,9 @@ static int SequencerThread(void *ptr)
 
 int start_sequencer(SequencerData *data)
 {
-
-    printf("\nSequencer Start\n");
+    	printf("\nSequencer Start\n");
+	lock_wait_start = SDL_CreateMutex();
+	cond_wait_start = SDL_CreateCond();
 
     /* Simply create a thread */
     thread = SDL_CreateThread(SequencerThread, "SequencerThread", data);

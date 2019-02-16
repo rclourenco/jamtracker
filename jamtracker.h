@@ -26,6 +26,8 @@ extern Uint32 SequencerEvent;
 
 int start_sequencer(SequencerData *data);
 int stop_sequencer();
+void sequence_start();
+
 void dump_channel_item(ChannelItem *p);
 void set_note(uint8_t note, uint8_t smp);
 void dump_channel_item_str(char *dest, ChannelItem *p);
