@@ -43,6 +43,40 @@ int get_song_position()
 }
 
 
+SDL_atomic_t song_command;
+
+void set_song_command(int p)
+{
+	SDL_AtomicSet(&song_command, p);
+}
+
+int get_song_command()
+{
+	int v = SDL_AtomicGet(&song_command);
+	SDL_AtomicCAS(&song_command, v, 0);
+
+	return v;
+}
+
+
+SDL_atomic_t channel_avg[8];
+
+void set_channel_avg(float avg[8])
+{
+	int j;
+	for(j=0;j<8;j++)
+		SDL_AtomicSet(&channel_avg[j], (int)(avg[j]/512.0));
+}
+
+void get_channel_avg(int avg[8])
+{
+	int j;
+	for(j=0;j<8;j++)
+		avg[j] = SDL_AtomicGet(&channel_avg[j]);
+}
+
+float average[8];
+
 extern float freq_tab[12];
 extern float oct_tab[12]; 
 
@@ -154,6 +188,7 @@ SDL_bool sequence_started = SDL_FALSE;
 SDL_mutex *lock_wait_start;
 SDL_cond *cond_wait_start;
 
+int start_point = 0;
 
 void sequence_wait_start()
 {
@@ -170,10 +205,36 @@ void sequence_start()
 	printf("Start Received\n");
 	SDL_LockMutex(lock_wait_start);
 	if (!sequence_started) {
+		printf("Can start!\n");
+		start_point = 0;
 		sequence_started = SDL_TRUE;
 		SDL_CondSignal(cond_wait_start);
 	}
 	SDL_UnlockMutex(lock_wait_start);
+}
+
+void sequence_resume(int point)
+{
+	printf("Resume Received\n");
+	SDL_LockMutex(lock_wait_start);
+	if (!sequence_started) {
+		printf("Can Resume\n");
+		start_point = point;
+		sequence_started = SDL_TRUE;
+		SDL_CondSignal(cond_wait_start);
+	}
+	SDL_UnlockMutex(lock_wait_start);
+}
+
+
+
+int sequence_status()
+{
+	int st = 0;
+	SDL_LockMutex(lock_wait_start);
+	st = sequence_started ? 1: 0;
+	SDL_UnlockMutex(lock_wait_start);
+	return st;
 }
 
 void sequence_ended()
@@ -194,8 +255,12 @@ static int SequencerThread(void *ptr)
 	while(1)
 	{
 		sequence_wait_start();
+		printf(">>>>>>>>>>>>>> GO \n");
 		play_sequence(s);
+		printf(">>>>>>>>>>>>>>>> EXIT\n");
 		sequence_ended();
+		set_song_position(-1);
+
 		//break;
 	}
 	return 0;
@@ -208,9 +273,6 @@ static int play_sequence(SequencerData *s)
     int cnt = 0;
 
     SamplerStatus *smpst = &eSamplerStatus;
-    memset(smpst, 0, sizeof(SamplerStatus));
-
-    smpst->smpdata = s->smpdata;
  
 	int n=0, o_n=-1;
 	uint8_t ticks = 6;
@@ -220,8 +282,20 @@ static int play_sequence(SequencerData *s)
 	int i=0, j;
 	int16_t cursor=0;
 
+	set_song_position(0);
+	memset(smpst, 0, sizeof(SamplerStatus));
+	smpst->smpdata = s->smpdata;
+
+	printf("PTR Received: %p %p %d\n", s->seq, s->smpdata, s->npat);
+
+	if (start_point) {
+		cursor = ((start_point >> 16) & 0xFF)*64 + (start_point & 0xFF);
+		printf("Start Point: %08X %08X\n", start_point, cursor);
+	}
+
 	for (j=0;j<8;j++)
 	{
+		average[j] = 0.0;
 		instru[j] = 0;
 		effect[j] = 0;
 		evalue[j] = 0;
@@ -251,13 +325,23 @@ static int play_sequence(SequencerData *s)
 		int j;
 		int next_step;
 		int pat;
+		int cmd;
+		int skip = 0;
 
 		if (cursor<0)
 			cursor=0;
 
-		if (cursor >= s->nseq*64) {
-			set_song_position(-1);
-    			cursor=0;
+
+		cmd = get_song_command();
+
+		switch (cmd) {
+		case SONG_BREAK:
+			skip = 1;
+			break;
+		}
+
+		if (skip || cursor >= s->nseq*64) {
+			cursor=0;
 			break;
 		}
 
@@ -477,6 +561,10 @@ static int play_sequence(SequencerData *s)
 				set_note_ex2(smpst, period, pitch, instru, volume, offset, t);
 
 				generate_audio(smpst, ns);
+
+				set_channel_avg(average);
+
+
 				apply_fx(smpst, perinc, volinc);
 			}
 
@@ -877,6 +965,13 @@ Uint8 audbuffer[AUDBUFFERSZ];
 int generate_audio(SamplerStatus *smpst, size_t ns)
 {
 	float chmix[8];
+	size_t cnt=0;
+	int j;
+
+	for (j=0;j<8; j++) {
+		average[j]=0;
+	}
+
 	while(ns)
 	{
 		size_t i;
@@ -924,6 +1019,12 @@ int generate_audio(SamplerStatus *smpst, size_t ns)
 
 			}
 
+			average[0] += chmix[0] * chmix[0];
+			average[1] += chmix[1] * chmix[1];
+			average[2] += chmix[2] * chmix[2];
+			average[3] += chmix[3] * chmix[3];
+			cnt++;
+
 			chleft  = chmix[0]*0.5 + chmix[3]*0.5;
 			chright = chmix[1]*0.5 + chmix[2]*0.5;
 			if (chleft < -128) {
@@ -941,10 +1042,18 @@ int generate_audio(SamplerStatus *smpst, size_t ns)
 
 			audbuffer[i]    = chleft+128;
 			audbuffer[++i]	= chright+128;
+
 		}
 		if(len) {
 			PipeSend(&audiostream, audbuffer, len);
 		}
 	}
+
+	if (cnt > 0) {
+		for (j=0;j<8; j++) {
+			average[j]=average[j]/(float)cnt;
+		}
+	}
+
 	return 1;
 }

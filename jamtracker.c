@@ -59,7 +59,7 @@ void textwrite(char *str)
 
 SDL_mutex *mutex;
 
-void apply_surface(int seq, int pat, int pos)
+void apply_surface(int seq, int pat, int pos, int avg[8])
 {
 	#define SHAPE_W 16
 	#define SHAPE_H 16
@@ -77,6 +77,15 @@ void apply_surface(int seq, int pat, int pos)
 	FillArea(1, yi-4, 318, yi+107, 17);
     	//fillscreen(0x0);
 	//writest(100, 20, "JamTracker");
+	FillArea(5,  0, 30,50, 0);
+	FillArea(290,0,315,50, 0);
+
+//	printf("[%5d %5d %5d %5d]\n", avg[0], avg[1],  avg[2], avg[3]);
+
+	FillArea(5,   50, 15,  50-avg[0], 2);
+	FillArea(20,  50, 30,  50-avg[1], 2);
+	FillArea(290, 50, 300, 50-avg[2], 2);
+	FillArea(305, 50, 315, 50-avg[3], 2);
 
 	char buffer[128];
 
@@ -160,9 +169,9 @@ void show_song(MusicModule *mm)
 	}
 	graph_refresh();
 }
-void update_status(uint8_t seq, uint8_t pat, uint8_t pos)
+void update_status(uint8_t seq, uint8_t pat, uint8_t pos, int avg[8])
 {
-	apply_surface(seq, pat, pos);
+	apply_surface(seq, pat, pos, avg);
 }
 
 
@@ -173,6 +182,8 @@ int load_files_new();
 int init_new(int audio_device);
 
 void cleanup_new();
+
+int avg[8];
 
 int main( int argc, char *args[])
 {
@@ -275,7 +286,7 @@ int main( int argc, char *args[])
 	textwrite(tmp);
 	textwrite("\n");
 	show_song(mm);
-    apply_surface(-1,-1,-1);
+    apply_surface(-1,-1,-1, avg);
 
     main_loop_new(mml);
 
@@ -301,30 +312,52 @@ int main_loop_new(MusicModuleList *mml)
 	int smp = 0;
 	start_sequencer(&seqdta);
 	int osp = -1;
+
+	int on_break = 0;
+	int stoped = 0;
+
 	while(!quit)
 	{
 		int sp = get_song_position();
 		if (sp!=-1) {
-			update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF );
+			get_channel_avg(avg);
+			update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF, avg);
 			osp = sp;
 		}
 
-		if (sp==-1)
-		{
-			MusicModule *mm = musmod_list_next(mml);
-			if (mm) {
-				seqdta.patterns = mm->patterns;
-				seqdta.npat = mm->lps; 
-				seqdta.seq  = mm->ms.seq;
-				seqdta.nseq = mm->ms.np;
-				seqdta.smpdata = mm->samples;
-				show_song(mm);
+		if (sp==-1 && sequence_status()==0) {
+			switch(on_break) {
+			case 1:
+				printf("Load next >>>>>>>>>>>>>>>>>>>>>>\n");
+				MusicModule *mm = musmod_list_next(mml);
+				if (mm) {
+					seqdta.patterns = mm->patterns;
+					seqdta.npat = mm->lps; 
+					seqdta.seq  = mm->ms.seq;
+					seqdta.nseq = mm->ms.np;
+					seqdta.smpdata = mm->samples;
+					show_song(mm);
+					printf("PTR Set %p %p %d\n", seqdta.seq, seqdta.smpdata, seqdta.npat);
+					stoped = 0;
+					sequence_start();
+				} else {
+					quit = 1;
+				}
+				break;
+			case 2:
+				// restart
+				stoped = 0;
 				sequence_start();
-			} else {
-			//	sequence_shutdown();
-				quit = 1;
+				break;
+			case 3:
+				stoped = 1;
 				break;
 			}
+
+			on_break = stoped ? 0 : 1;
+
+			if (quit)
+				break;
 		}
 	        //While there's events to handle
 		if( SDL_WaitEventTimeout( &event, 40 ) )
@@ -355,6 +388,7 @@ int main_loop_new(MusicModuleList *mml)
 			switch(event.key.keysym.sym)
 			{
 			case SDLK_SPACE:
+				stoped = 0;
 				sequence_start();
 				break;
 			case SDLK_0:
@@ -366,6 +400,28 @@ int main_loop_new(MusicModuleList *mml)
 			case SDLK_2:
 				set_fullscreen(2);
 				break;
+			case SDLK_ESCAPE:
+				quit=1;
+			break;
+			case SDLK_x:
+				on_break = 1;
+				if (!stoped)
+					set_song_command(SONG_BREAK);
+			break;
+			case SDLK_r:
+				on_break = 2;
+				if (!stoped)
+					set_song_command(SONG_BREAK);
+			break;
+			case SDLK_s:
+				on_break = 3;
+				if (!stoped)
+					set_song_command(SONG_BREAK);
+			break;
+			case SDLK_c:
+				stoped = 0;
+				sequence_resume(osp);
+			break;
 			default: break;
 			}
 

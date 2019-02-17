@@ -27,12 +27,19 @@ extern Uint32 SequencerEvent;
 int start_sequencer(SequencerData *data);
 int stop_sequencer();
 void sequence_start();
+void sequence_resume(int point);
+int sequence_status();
 
 void dump_channel_item(ChannelItem *p);
 void set_note(uint8_t note, uint8_t smp);
 void dump_channel_item_str(char *dest, ChannelItem *p);
 int get_song_position();
 void set_note_ex(uint8_t note[8], uint8_t smp[8]);
+void get_channel_avg(int avg[8]);
+
+#define SONG_BREAK 0xFFFF
+
+void set_song_command(int cmd);
 
 #define PIPESIZE 4096
 
