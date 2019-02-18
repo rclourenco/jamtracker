@@ -337,7 +337,7 @@ int main_loop_new(MusicModuleList *mml)
 					seqdta.nseq = mm->ms.np;
 					seqdta.smpdata = mm->samples;
 					show_song(mm);
-					printf("PTR Set %p %p %d\n", seqdta.seq, seqdta.smpdata, seqdta.npat);
+					printf("PTR Set %p %p %d\n", seqdta.seq, seqdta.smpdata, (int)seqdta.npat);
 					stoped = 0;
 					sequence_start();
 				} else {
