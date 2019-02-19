@@ -64,17 +64,20 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 	#define SHAPE_W 16
 	#define SHAPE_H 16
 	#define SHAPE_SIZE 16
-	int yi = 68;
+	int yi = 60;
 	int nr = 13;
 	int nr2 = 6;
 
-	int i,j;
+	int i,j,ii=0;
 	SDL_Rect SrcR;
 	SDL_Rect DestR;
 	TextBackGround=255;
 	TextColor=14;
 	FillColor=17;
-	FillArea(1, yi-4, 318, yi+107, 17);
+	Color=32;
+	FillArea(1, yi-4, 318, yi+112, 17);
+	FillArea(3, yi+49, 316, yi+59, 18);
+
     	//fillscreen(0x0);
 	//writest(100, 20, "JamTracker");
 	FillArea(5,  0, 30,50, 0);
@@ -90,33 +93,48 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 	char buffer[128];
 
 	if (seq>=0 && pat>=0 && pos>=0) {
-    		for(i=0;i<nr;i++)
+		ii = yi;
+    		for(i=0;i<nr;i++, ii+=8)
 		{
 			int row = pos - nr2 + i;
 			if (row<0 || row > 63) {
 				continue;
 			}
+			if (i==nr2)
+				ii+=3;
 
-			TextColor =  (row == pos) ? 40 : 7;
+			if (row == pos) {
+				TextColor = 40;
+			} 
+			else if (row < pos) {
+				TextColor = 25-(pos-row);
+			}
+			else {
+				TextColor = 25-(row-pos);
+			}
 
 			sprintf(buffer, "%02X", row);
-			writest(8, yi+i*8, buffer);
+			writest(8, ii, buffer);
 
 
 			for (j=0;j<4;j++) {
 				ChannelItem *p = &(seqdta.patterns[pat].item[row*4+j]);
 				dump_channel_item_str(buffer, p);
-				writest(32+j*72, yi+i*8, buffer);
+				writest(32+j*72, ii, buffer);
 			}
+
+			if (i==nr2)
+				ii+=3;
+
 		}
 	}
 
 	Color = 2;
-	DrawRect(2, yi-3, 317, yi+106, LINE);
-	DrawLine(27, yi-2, 27, yi+105);
-	DrawLine(99, yi-2, 99, yi+105);
-	DrawLine(171, yi-2, 171, yi+105);
-	DrawLine(244, yi-2, 244, yi+105);
+	DrawRect(2, yi-3, 317, yi+111, LINE);
+	DrawLine(27, yi-2, 27, yi+110);
+	DrawLine(99, yi-2, 99, yi+110);
+	DrawLine(171, yi-2, 171, yi+110);
+	DrawLine(244, yi-2, 244, yi+110);
 
 	TextBackGround=0;
 	TextColor=32;
