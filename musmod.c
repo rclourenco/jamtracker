@@ -325,6 +325,22 @@ MusicModule *musmod_list_prev(MusicModuleList *mml)
 	return mml->cur;
 }
 
+int musmod_list_islast(MusicModuleList *mml)
+{
+	if (!mml)
+		return 1;
+
+	return mml->pos >= mml->len;
+}
+
+int musmod_list_isfirst(MusicModuleList *mml)
+{
+	if (!mml)
+		return 1;
+
+	return mml->pos < 2;
+}
+
 
 
 void musmod_list_close(MusicModuleList *mml)

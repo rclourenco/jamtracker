@@ -47,5 +47,8 @@ typedef struct {
 MusicModuleList *musmod_open_list(const char *list);
 MusicModule *musmod_list_next(MusicModuleList *mml);
 MusicModule *musmod_list_prev(MusicModuleList *mml);
+int musmod_list_islast(MusicModuleList *mml);
+int musmod_list_isfirst(MusicModuleList *mml);
+
 
 #endif

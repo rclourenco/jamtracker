@@ -351,14 +351,30 @@ int main_loop_new(MusicModuleList *mml)
 
 			switch(on_break) {
 			case 1:
+			case 5:
 			case 4:
 				if (on_break==1) {
+					if (!musmod_list_islast(mml)) {
+						printf("Load next >>>>>>>>>>>>>>>>>>>>>>\n");
+						mm = musmod_list_next(mml);
+						if (!mm)
+							quit = 1;
+					}
+					else {
+						stoped = 1;
+					}
+				}
+				else if(on_break==5) {
 					printf("Load next >>>>>>>>>>>>>>>>>>>>>>\n");
 					mm = musmod_list_next(mml);
+					if (!mm)
+						quit = 1;
 				}
 				else {
 					printf("Load previous >>>>>>>>>>>>>>>>>>>>>>\n");
 					mm = musmod_list_prev(mml);
+					if (!mm)
+						quit = 1;
 				}
 
 				if (mm) {
@@ -374,9 +390,7 @@ int main_loop_new(MusicModuleList *mml)
 					//stoped = 0;
 					if (!stoped)
 						sequence_start();
-				} else {
-					quit = 1;
-				}
+				} 
 				break;
 			case 2:
 				// restart
@@ -443,14 +457,18 @@ int main_loop_new(MusicModuleList *mml)
 				quit=1;
 			break;
 			case SDLK_z:
-				on_break = 4;
-				if (!stoped)
-					set_song_command(SONG_BREAK);
+				if (!musmod_list_isfirst(mml)) {
+					on_break = 4;
+					if (!stoped)
+						set_song_command(SONG_BREAK);
+				}
 			break;
 			case SDLK_x:
-				on_break = 1;
-				if (!stoped)
-					set_song_command(SONG_BREAK);
+				if (!musmod_list_islast(mml)) {
+					on_break = 5;
+					if (!stoped)
+						set_song_command(SONG_BREAK);
+				}
 			break;
 			case SDLK_r:
 				on_break = 2;
