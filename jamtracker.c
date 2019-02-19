@@ -332,7 +332,10 @@ int main_loop_new(MusicModuleList *mml)
 	int osp = -1;
 
 	int on_break = 0;
-	int stoped = 0;
+	int stoped = 1;
+
+	get_channel_avg(avg);
+	update_status(0,0,0, avg);
 
 	while(!quit)
 	{
@@ -344,10 +347,20 @@ int main_loop_new(MusicModuleList *mml)
 		}
 
 		if (sp==-1 && sequence_status()==0) {
+			MusicModule *mm = NULL;
+
 			switch(on_break) {
 			case 1:
-				printf("Load next >>>>>>>>>>>>>>>>>>>>>>\n");
-				MusicModule *mm = musmod_list_next(mml);
+			case 4:
+				if (on_break==1) {
+					printf("Load next >>>>>>>>>>>>>>>>>>>>>>\n");
+					mm = musmod_list_next(mml);
+				}
+				else {
+					printf("Load previous >>>>>>>>>>>>>>>>>>>>>>\n");
+					mm = musmod_list_prev(mml);
+				}
+
 				if (mm) {
 					seqdta.patterns = mm->patterns;
 					seqdta.npat = mm->lps; 
@@ -355,9 +368,12 @@ int main_loop_new(MusicModuleList *mml)
 					seqdta.nseq = mm->ms.np;
 					seqdta.smpdata = mm->samples;
 					show_song(mm);
+					get_channel_avg(avg);
+					update_status(0,0,0, avg);
 					printf("PTR Set %p %p %d\n", seqdta.seq, seqdta.smpdata, (int)seqdta.npat);
-					stoped = 0;
-					sequence_start();
+					//stoped = 0;
+					if (!stoped)
+						sequence_start();
 				} else {
 					quit = 1;
 				}
@@ -406,8 +422,13 @@ int main_loop_new(MusicModuleList *mml)
 			switch(event.key.keysym.sym)
 			{
 			case SDLK_SPACE:
-				stoped = 0;
-				sequence_start();
+				if (stoped) {
+					stoped = 0;
+					sequence_start();
+				} else if (on_break != 3) {
+					on_break = 3;
+					set_song_command(SONG_BREAK);
+				}
 				break;
 			case SDLK_0:
 				set_fullscreen(0);
@@ -421,6 +442,11 @@ int main_loop_new(MusicModuleList *mml)
 			case SDLK_ESCAPE:
 				quit=1;
 			break;
+			case SDLK_z:
+				on_break = 4;
+				if (!stoped)
+					set_song_command(SONG_BREAK);
+			break;
 			case SDLK_x:
 				on_break = 1;
 				if (!stoped)
@@ -431,11 +457,12 @@ int main_loop_new(MusicModuleList *mml)
 				if (!stoped)
 					set_song_command(SONG_BREAK);
 			break;
-			case SDLK_s:
+/*			case SDLK_s:
 				on_break = 3;
 				if (!stoped)
 					set_song_command(SONG_BREAK);
 			break;
+*/
 			case SDLK_c:
 				stoped = 0;
 				sequence_resume(osp);

@@ -254,13 +254,12 @@ static int SequencerThread(void *ptr)
 	SequencerData *s = (SequencerData *)ptr;
 	while(1)
 	{
+		set_song_position(-1);
 		sequence_wait_start();
 		printf(">>>>>>>>>>>>>> GO \n");
 		play_sequence(s);
 		printf(">>>>>>>>>>>>>>>> EXIT\n");
 		sequence_ended();
-		set_song_position(-1);
-
 		//break;
 	}
 	return 0;

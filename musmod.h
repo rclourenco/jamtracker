@@ -46,5 +46,6 @@ typedef struct {
 
 MusicModuleList *musmod_open_list(const char *list);
 MusicModule *musmod_list_next(MusicModuleList *mml);
+MusicModule *musmod_list_prev(MusicModuleList *mml);
 
 #endif

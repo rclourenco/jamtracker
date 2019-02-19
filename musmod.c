@@ -279,24 +279,53 @@ failure:
 
 MusicModule *musmod_list_next(MusicModuleList *mml)
 {
+	MusicModule *new = NULL;
 	if (!mml)
 		return NULL;
 
-	if (mml->cur) {
-		musmod_free(mml->cur);
-		mml->cur = NULL;
-	}
-
 	while (mml->pos < mml->len) {
-		mml->cur = musmod_load(mml->list[mml->pos]);
+		new = musmod_load(mml->list[mml->pos]);
 		mml->pos++;
 
-		if (mml->cur!=NULL)
-			return mml->cur;
+		if (new!=NULL) {
+			if (mml->cur) {
+				musmod_free(mml->cur);
+			}
+			mml->cur = new;
+			break;
+		}
 	}
 
-	return NULL;
+	return mml->cur;
 }
+
+MusicModule *musmod_list_prev(MusicModuleList *mml)
+{
+	MusicModule *new = NULL;
+	if (!mml)
+		return NULL;
+
+	if (mml->len==0)
+		return mml->cur;
+
+	while (mml->pos>1) {
+		mml->pos-=2;
+		new = musmod_load(mml->list[mml->pos]);
+		mml->pos++;
+
+		if (new!=NULL) {
+			if (mml->cur) {
+				musmod_free(mml->cur);
+			}
+			mml->cur = new;
+			break;
+		}
+	}
+
+	return mml->cur;
+}
+
+
 
 void musmod_list_close(MusicModuleList *mml)
 {
