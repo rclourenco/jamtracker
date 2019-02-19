@@ -286,7 +286,7 @@ static int play_sequence(SequencerData *s)
 	memset(smpst, 0, sizeof(SamplerStatus));
 	smpst->smpdata = s->smpdata;
 
-	printf("PTR Received: %p %p %d\n", s->seq, s->smpdata, s->npat);
+	printf("PTR Received: %p %p %d\n", s->seq, s->smpdata, (int)s->npat);
 
 	if (start_point) {
 		cursor = ((start_point >> 16) & 0xFF)*64 + (start_point & 0xFF);
