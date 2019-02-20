@@ -17,6 +17,7 @@ typedef struct {
 	uint8_t *seq;
 	size_t nseq;
 	Sample *smpdata;
+	ModMeta *meta;
 } SequencerData;
 
 extern uint8_t note_period_tab[2048];
@@ -37,7 +38,11 @@ int get_song_position();
 void set_note_ex(uint8_t note[8], uint8_t smp[8]);
 void get_channel_avg(int avg[8]);
 
-#define SONG_BREAK 0xFFFF
+#define SONG_BREAK   0xFFFF
+#define SONG_RESTART 0xFFFE
+#define SONG_PAUSE   0xFFFD
+#define SONG_EVENT_BASE 0x0100
+#define SONG_EVENT(X)   (0x0100+(X))
 
 void set_song_command(int cmd);
 

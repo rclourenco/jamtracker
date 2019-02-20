@@ -37,8 +37,13 @@ unsigned char TextBackGround=255;
 unsigned char *dscreen=NULL;
 unsigned char *screen=NULL;
 
+GraphPicture *use_icon=NULL;
+
 //instrucoes graficas de interface com a bios
 typedef unsigned char *CPT;
+
+void set_window_icon(GraphPicture *icon);
+
 int modo13h();//modo grafico
 void modo3h();//modo texto
 unsigned char *getcpt();//retorna a posicao do mapa de caracteres
@@ -96,6 +101,11 @@ void set_window_name(char *n)
 	window_name = n;
 }
 
+void set_window_icon(GraphPicture *icon)
+{
+	use_icon = icon;
+}
+
 int modo13h()
 {
 	dscreen = (unsigned char *)malloc(SCREEN_W*SCREEN_H);
@@ -113,7 +123,24 @@ int modo13h()
 	GraphSystem.screenx     = SDL_CreateTexture(GraphSystem.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
 	GraphSystem.pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
 
-	//Init SDL	
+	if (use_icon!=NULL) {
+		SDL_Surface *surface = NULL;
+
+		switch (use_icon->bytes_per_pixel) {
+		case 2:
+			surface = SDL_CreateRGBSurfaceWithFormatFrom((void *)use_icon->pixel_data, use_icon->width, use_icon->height, 16, use_icon->width*2, SDL_PIXELFORMAT_RGB565);
+			break;
+		case 4:
+			surface = SDL_CreateRGBSurfaceWithFormatFrom((void *)use_icon->pixel_data, use_icon->width, use_icon->height, 32, use_icon->width*4, SDL_PIXELFORMAT_ABGR8888);
+			break;
+		}				
+
+		if (surface) {
+  			SDL_SetWindowIcon(GraphSystem.win, surface);
+  			SDL_FreeSurface(surface);
+		}
+	}
+	
 	return 1;
 _abort:
 	if(dscreen)

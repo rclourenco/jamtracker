@@ -266,32 +266,9 @@ static int SequencerThread(void *ptr)
 }
 
 
-
-static int play_sequence(SequencerData *s)
+static void sequence_reset(SamplerStatus *smpst, SequencerData *s)
 {
-    int cnt = 0;
-
-    SamplerStatus *smpst = &eSamplerStatus;
- 
-	int n=0, o_n=-1;
-	uint8_t ticks = 6;
-	uint8_t delta = 20;
-	unsigned int currentTime = SDL_GetTicks();
-	unsigned int lastTime = currentTime;
-	int i=0, j;
-	int16_t cursor=0;
-
-	set_song_position(0);
-	memset(smpst, 0, sizeof(SamplerStatus));
-	smpst->smpdata = s->smpdata;
-
-	printf("PTR Received: %p %p %d\n", s->seq, s->smpdata, (int)s->npat);
-
-	if (start_point) {
-		cursor = ((start_point >> 16) & 0xFF)*64 + (start_point & 0xFF);
-		printf("Start Point: %08X %08X\n", start_point, cursor);
-	}
-
+	int j;
 	for (j=0;j<8;j++)
 	{
 		average[j] = 0.0;
@@ -320,6 +297,37 @@ static int play_sequence(SequencerData *s)
 	}
 	row_delay = -1;
 
+	memset(smpst, 0, sizeof(SamplerStatus));
+	smpst->smpdata = s->smpdata;
+}
+
+static int play_sequence(SequencerData *s)
+{
+    int cnt = 0;
+
+    SamplerStatus *smpst = &eSamplerStatus;
+ 
+	int n=0, o_n=-1;
+	uint8_t ticks = 6;
+	uint8_t delta = 20;
+	unsigned int currentTime = SDL_GetTicks();
+	unsigned int lastTime = currentTime;
+	int i=0, j;
+	int16_t cursor=0;
+
+	set_song_position(0);
+
+	sequence_reset(smpst, s);
+
+	printf("PTR Received: %p %p %d\n", s->seq, s->smpdata, (int)s->npat);
+
+	if (start_point) {
+		cursor = ((start_point >> 16) & 0xFF)*64 + (start_point & 0xFF);
+		printf("Start Point: %08X %08X\n", start_point, cursor);
+	}
+
+	int action  = 0;
+	int lastseq = 0;
 	while(1) {
 		int j;
 		int next_step;
@@ -331,13 +339,38 @@ static int play_sequence(SequencerData *s)
 			cursor=0;
 
 
-		cmd = get_song_command();
+		int pause = 0;
 
-		switch (cmd) {
-		case SONG_BREAK:
-			skip = 1;
-			break;
-		}
+		do {
+			cmd = get_song_command();
+
+			switch (cmd) {
+			case SONG_BREAK:
+				skip  = 1;
+				pause = 0;
+				break;
+			case SONG_RESTART:
+				cursor = 0;
+				sequence_reset(smpst, s);
+				ticks = 6;
+				delta = 20;
+				pause = 0;
+				break;
+			case SONG_PAUSE:
+				pause = !pause;
+				break;
+			default:
+				if ( cmd>=SONG_EVENT_BASE && cmd <SONG_EVENT_BASE+12 ) {
+					action = cmd - SONG_EVENT_BASE+1;
+					if (pause) 
+						pause=0;
+				}
+			}
+
+			if (pause) {
+				SDL_Delay(10);
+			}
+		} while(pause);
 
 		if (skip || cursor >= s->nseq*64) {
 			cursor=0;
@@ -345,6 +378,11 @@ static int play_sequence(SequencerData *s)
 		}
 
 		n = cursor>>6;
+
+		if (o_n != n) {
+			// jump 
+		}
+
 		pat = s->seq[n];
 	        i = cursor&0x3F;
 

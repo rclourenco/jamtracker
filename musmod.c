@@ -5,6 +5,93 @@
 
 #include "musmod.h"
 
+int readline(char *buffer, size_t len, FILE *fp)
+{
+	int ch;
+	int c=0;
+	while( (ch=fgetc(fp))!=EOF && ch!='\n' ) {
+		if (c<len) {
+			*buffer = ch;
+			buffer++;
+		}
+		c++;
+	}
+	*buffer='\0';
+	return c;
+}
+
+int load_meta(char *modfile, MusicModule *mm)
+{
+	char buffer[256];
+	char d1[10], d2[10], d3[10], d4[10];
+	FILE *fp;
+
+	strcpy(buffer, modfile);
+	strcat(buffer, ".meta");
+
+	fp = fopen(buffer, "rb");
+	if (!fp) {
+		return 0;
+	}
+
+	mm->meta.active = 0;
+
+	while(!feof(fp)) {
+		if (!readline(buffer, 256, fp)) {
+			continue;
+		}
+		char c1=0,c2=0,c3=0,c4=0;
+		int d1=0, d2=0, d3=0;
+
+		sscanf(buffer, "%c%d %c%d %c%d %c\n", &c1, &d1, &c2, &d2, &c3, &d3, &c4);
+		if (c1!='G' && c1!='S') {
+			printf("Invalid meta... Expects G or S...\n");
+			continue;
+		}
+
+		if (c2!='E' && c2!='N') {
+			printf("Invalid meta... Expects E or N...\n");
+			continue;
+		}
+
+		if (c3!='S') {
+			printf("Invalid meta... Expects S...\n");
+			continue;
+		}
+
+		if (d1<0 && d1>127)
+			continue;
+
+		if (d2<0 && d2>11)
+			continue;
+
+		if (d3<0 && d3>127)
+			continue;
+
+		if (c1=='G') {
+			mm->meta.global[d2]=d3+1;
+			mm->meta.active++;
+		}
+
+		if (c1=='S') {
+			if (c2=='N') {
+				mm->meta.perseq[d1][12]=d3+1;
+				mm->meta.active++;
+			}
+	
+			if (c2=='E') {
+				mm->meta.perseq[d1][d2]=d3+1;
+				mm->meta.active++;
+			}
+		}
+
+		printf("Meta %c[%d] %c[%d] %c[%d] %c\n", c1, d1, c2, d2, c3, d3, c4);
+	}
+
+	fclose(fp);
+	return mm->meta.active;
+}
+
 MusicModule *musmod_load(char *modfile)
 {
 	char modtype[5];
@@ -137,6 +224,7 @@ MusicModule *musmod_load(char *modfile)
 	}
 
 	printf("L: %ld\n", ftell(fp));
+	load_meta(modfile, mm);
 
 	fclose(fp);
 	return mm;
@@ -165,21 +253,6 @@ void musmod_free(MusicModule *mm)
 		}
 		free(mm);
 	}
-}
-
-int readline(char *buffer, size_t len, FILE *fp)
-{
-	int ch;
-	int c=0;
-	while( (ch=fgetc(fp))!=EOF && ch!='\n' ) {
-		if (c<len) {
-			*buffer = ch;
-			buffer++;
-		}
-		c++;
-	}
-	*buffer='\0';
-	return c;
 }
 
 MusicModuleList *musmod_open_list(const char *list)

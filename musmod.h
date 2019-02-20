@@ -26,12 +26,19 @@ typedef struct {
 } ModPattern;
 
 typedef struct {
+	int  active;
+	char global[12];
+	char perseq[128][13];
+} ModMeta;
+
+typedef struct {
 	ModSequence ms;
 	char name[21];
 	ModPattern patterns[127];
 	Sample samples[31];
 	uint8_t lps;
 	uint8_t nsamples;
+	ModMeta meta;
 } MusicModule;
 
 MusicModule *musmod_load(char *modfile);

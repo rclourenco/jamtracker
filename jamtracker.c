@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include "jamtracker.h"
 #include "graphlib.c"
+#include "iconx.c"
+#include "icon.c"
 
 //Screen attributes
 const int SCREEN_WIDTH = 640;
@@ -59,18 +61,10 @@ void textwrite(char *str)
 
 SDL_mutex *mutex;
 
-void apply_surface(int seq, int pat, int pos, int avg[8])
-{
-	#define SHAPE_W 16
-	#define SHAPE_H 16
-	#define SHAPE_SIZE 16
-	int yi = 60;
-	int nr = 13;
-	int nr2 = 6;
+int view = 0;
 
-	int i,j,ii=0;
-	SDL_Rect SrcR;
-	SDL_Rect DestR;
+void surface_header(int yi, int avg[8])
+{
 	TextBackGround=255;
 	TextColor=14;
 	FillColor=17;
@@ -89,6 +83,43 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 	FillArea(20,  50, 30,  50-avg[1], 2);
 	FillArea(290, 50, 300, 50-avg[2], 2);
 	FillArea(305, 50, 315, 50-avg[3], 2);
+}
+
+void surface_footer(int seq, int pat, int pos)
+{
+	char buffer[128];
+
+	TextBackGround=0;
+	TextColor=32;
+
+	writest(0, 176, "\xDA\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xBF");
+
+
+	if(seq == -1) {
+		sprintf(buffer, "%c Position: -- %c Pattern: -- %c Row: -- %c", 179, 179, 179, 179);
+	} else {
+		sprintf(buffer, "%c Position: %02X %c Pattern: %02X %c Row: %02X %c", 179, seq, 179, pat, 179, pos, 179);
+	}
+
+	writest(0, 184, buffer);
+
+	writest(0, 192, "\xC0\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC1\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC1\
+\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xD9");
+
+}
+
+void apply_surface(int seq, int pat, int pos, int avg[8])
+{
+	int yi = 60;
+	int nr = 13;
+	int nr2 = 6;
+
+	int i,j,ii=0;
+
+	surface_header(yi, avg);
 
 	char buffer[128];
 
@@ -136,28 +167,59 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 	DrawLine(171, yi-2, 171, yi+110);
 	DrawLine(244, yi-2, 244, yi+110);
 
-	TextBackGround=0;
-	TextColor=32;
-
-	writest(0, 176, "\xDA\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
-\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
-\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xBF");
-
-
-	if(seq == -1) {
-		sprintf(buffer, "%c Position: -- %c Pattern: -- %c Row: -- %c", 179, 179, 179, 179);
-	} else {
-		sprintf(buffer, "%c Position: %02X %c Pattern: %02X %c Row: %02X %c", 179, seq, 179, pat, 179, pos, 179);
-	}
-
-	writest(0, 184, buffer);
-
-	writest(0, 192, "\xC0\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC1\
-\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC1\
-\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xD9");
+	surface_footer(seq, pat, pos);
 
 	graph_refresh();
 }
+
+void apply_surface2(int seq, int pat, int pos, int avg[8])
+{
+	int yi = 60;
+	int nr = 13;
+	int nr2 = 6;
+
+	int i,j,ii=0;
+
+	surface_header(yi, avg);
+
+	char buffer[128];
+
+	TextColor=25;
+
+	ii = yi;
+	for(i=0;i<12;i++) {
+		if (seqdta.meta->global[i]) {
+			sprintf(buffer, "Event: %2d -> Next: %02X", i, seqdta.meta->global[i]-1);
+			writest(10, ii, buffer);
+			ii+=8;
+			continue;
+		}
+
+		if (seq>=0&&seq<128 && seqdta.meta->perseq[seq][i]) {
+			sprintf(buffer, "Event: %2d -> Next: %02X", i, seqdta.meta->perseq[seq][i]-1);
+			writest(10, ii, buffer);
+			ii+=8;
+		}
+	}
+
+	ii+=8;
+	if (seq>=0&&seq<128) {
+		if (seqdta.meta->perseq[seq][12]) {
+			sprintf(buffer, "Default: %02X", seqdta.meta->perseq[seq][12]-1);
+		}
+		else {
+			sprintf(buffer, "Default: %02X", seq+1);
+		}
+
+		writest(10,ii, buffer);
+	}
+
+	surface_footer(seq, pat, pos);
+
+	graph_refresh();
+}
+
+
 
 void show_song(MusicModule *mm)
 {
@@ -189,7 +251,13 @@ void show_song(MusicModule *mm)
 }
 void update_status(uint8_t seq, uint8_t pat, uint8_t pos, int avg[8])
 {
-	apply_surface(seq, pat, pos, avg);
+	switch(view) {
+	case 1:
+		apply_surface2(seq, pat, pos, avg);
+	break;
+	default:
+		apply_surface(seq, pat, pos, avg);
+	}
 }
 
 
@@ -202,6 +270,8 @@ int init_new(int audio_device);
 void cleanup_new();
 
 int avg[8];
+
+int zero_avg[8] = {0,0,0,0,0,0,0,0};
 
 int main( int argc, char *args[])
 {
@@ -270,6 +340,7 @@ int main( int argc, char *args[])
 	seqdta.seq  = mm->ms.seq;
 	seqdta.nseq = mm->ms.np;
 	seqdta.smpdata = mm->samples;
+	seqdta.meta = &(mm->meta);
 
 	printf("INIT now\n");
     //Initialize
@@ -304,7 +375,7 @@ int main( int argc, char *args[])
 	textwrite(tmp);
 	textwrite("\n");
 	show_song(mm);
-    apply_surface(-1,-1,-1, avg);
+    update_status(-1,-1,-1, zero_avg);
 
     main_loop_new(mml);
 
@@ -334,8 +405,7 @@ int main_loop_new(MusicModuleList *mml)
 	int on_break = 0;
 	int stoped = 1;
 
-	get_channel_avg(avg);
-	update_status(0,0,0, avg);
+	update_status(0,0,0, zero_avg);
 
 	while(!quit)
 	{
@@ -344,6 +414,8 @@ int main_loop_new(MusicModuleList *mml)
 			get_channel_avg(avg);
 			update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF, avg);
 			osp = sp;
+		} else {
+			update_status(0,0,0, zero_avg);
 		}
 
 		if (sp==-1 && sequence_status()==0) {
@@ -383,9 +455,9 @@ int main_loop_new(MusicModuleList *mml)
 					seqdta.seq  = mm->ms.seq;
 					seqdta.nseq = mm->ms.np;
 					seqdta.smpdata = mm->samples;
+					seqdta.meta    = &(mm->meta);
 					show_song(mm);
-					get_channel_avg(avg);
-					update_status(0,0,0, avg);
+					update_status(0,0,0, zero_avg);
 					printf("PTR Set %p %p %d\n", seqdta.seq, seqdta.smpdata, (int)seqdta.npat);
 					//stoped = 0;
 					if (!stoped)
@@ -435,6 +507,66 @@ int main_loop_new(MusicModuleList *mml)
 			int sl = -1;
 			switch(event.key.keysym.sym)
 			{
+			case SDLK_1:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(0));
+				}
+				break;
+			case SDLK_2:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(1));
+				}
+				break;
+			case SDLK_3:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(2));
+				}
+				break;
+			case SDLK_4:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(3));
+				}
+				break;
+			case SDLK_5:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(4));
+				}
+				break;
+			case SDLK_6:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(5));
+				}
+				break;
+			case SDLK_7:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(6));
+				}
+				break;
+			case SDLK_8:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(7));
+				}
+				break;
+			case SDLK_9:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(8));
+				}
+				break;
+			case SDLK_0:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(9));
+				}
+				break;
+			case SDLK_q:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(10));
+				}
+				break;
+			case SDLK_w:
+				if(!stoped) {
+					set_song_command(SONG_EVENT(11));
+				}
+				break;
 			case SDLK_SPACE:
 				if (stoped) {
 					stoped = 0;
@@ -444,65 +576,72 @@ int main_loop_new(MusicModuleList *mml)
 					set_song_command(SONG_BREAK);
 				}
 				break;
-			case SDLK_0:
+			case SDLK_F10:
 				set_fullscreen(0);
 				break;
-			case SDLK_1:
+			case SDLK_F11:
 				set_fullscreen(1);
 				break;
-			case SDLK_2:
+			case SDLK_F12:
 				set_fullscreen(2);
 				break;
 			case SDLK_ESCAPE:
 				quit=1;
-			break;
-			case SDLK_z:
+				break;
+			case SDLK_AUDIOPREV:
+			case SDLK_b:
 				if (!musmod_list_isfirst(mml)) {
 					on_break = 4;
 					if (!stoped)
 						set_song_command(SONG_BREAK);
 				}
-			break;
-			case SDLK_x:
+				break;
+
+			case SDLK_AUDIONEXT:
+			case SDLK_n:
 				if (!musmod_list_islast(mml)) {
 					on_break = 5;
 					if (!stoped)
 						set_song_command(SONG_BREAK);
 				}
-			break;
+				break;
 			case SDLK_r:
-				on_break = 2;
+				if (stoped) {
+					stoped = 0;
+					sequence_start();
+				}
+				else {
+					set_song_command(SONG_RESTART);
+				}
+			break;
+			case SDLK_p:
 				if (!stoped)
-					set_song_command(SONG_BREAK);
-			break;
-/*			case SDLK_s:
-				on_break = 3;
-				if (!stoped)
-					set_song_command(SONG_BREAK);
-			break;
-*/
-			case SDLK_c:
-				stoped = 0;
-				sequence_resume(osp);
-			break;
+					set_song_command(SONG_PAUSE);
+				break;
+			case SDLK_h:
+			case SDLK_F1:
+				view=2;
+				break;
+			case SDLK_F2:
+			case SDLK_v:
+				view++;
+				if(view>1)
+					view=0;
 			default: break;
 			}
 
-			if(sl!=-1) {
-				//set_note(sl, smp);
-			}
 			}
 
-			//If the user has Xed out the window
- 			if( event.type == SDL_QUIT )
- 			{
- 				//Quit the program
+ 			if( event.type == SDL_QUIT ) {
  				quit = 1;
 				break;
   			}
 		}
 	}
+
+	printf("Smooth close...\n");
 	SDL_PauseAudioDevice(adev, 1);
+	SDL_Delay(100);
 	SDL_CloseAudioDevice(adev);
 	return 1;
 }
@@ -568,6 +707,7 @@ int init_new(int audio_device)
 
 
 	set_window_name("Jamtrack I");
+	set_window_icon(&iconx1);
 	modo13h();
 
 

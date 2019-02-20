@@ -1,0 +1,5 @@
+G0 E0 S1 # Global Event 0 Play Seq 1
+G0 E1 S2 # Global Event 1 Play Seq 2
+
+S1 N0 S0 # Default Loop S0
+S1 E2 S2 # On Event 2 Loop Break
