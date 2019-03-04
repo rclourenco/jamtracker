@@ -35,8 +35,15 @@ void dump_channel_item(ChannelItem *p);
 void set_note(uint8_t note, uint8_t smp);
 void dump_channel_item_str(char *dest, ChannelItem *p);
 int get_song_position();
+int get_song_status();
 void set_note_ex(uint8_t note[8], uint8_t smp[8]);
 void get_channel_avg(int avg[8]);
+
+#define PAUSE_FLAG   0x100
+
+#define SEQUENCER_PLAYING 0
+#define SEQUENCER_STOPPED 1
+#define SEQUENCER_PAUSED  2
 
 #define SONG_BREAK   0xFFFF
 #define SONG_RESTART 0xFFFE

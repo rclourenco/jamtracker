@@ -43,6 +43,22 @@ int get_song_position()
 }
 
 
+SDL_atomic_t song_status;
+
+void set_song_status(int action, int pause)
+{
+	int s = action;
+	if (pause) {
+		s |= 0x100;
+	}
+	SDL_AtomicSet(&song_status, s);
+}
+
+int get_song_status()
+{
+	return SDL_AtomicGet(&song_status);
+}
+
 SDL_atomic_t song_command;
 
 void set_song_command(int p)
@@ -328,6 +344,7 @@ static int play_sequence(SequencerData *s)
 
 	int action  = 0;
 	int lastseq = 0;
+	int resume = 0;
 	while(1) {
 		int j;
 		int next_step;
@@ -362,10 +379,15 @@ static int play_sequence(SequencerData *s)
 			default:
 				if ( cmd>=SONG_EVENT_BASE && cmd <SONG_EVENT_BASE+12 ) {
 					action = cmd - SONG_EVENT_BASE+1;
-					if (pause) 
+					printf("Action: %d\n", action);
+					if (pause) {
 						pause=0;
+						resume = 1;
+					}
 				}
 			}
+
+			set_song_status(action, pause);
 
 			if (pause) {
 				SDL_Delay(10);
@@ -378,15 +400,52 @@ static int play_sequence(SequencerData *s)
 		}
 
 		n = cursor>>6;
+		int change = 0;
 
-		if (o_n != n) {
-			// jump 
+		if (o_n == -1) {
+			change = 1;
+		}
+		else if (o_n != n || resume) {
+			change = 1;
+			printf("Resume: %d On: %d N: %d, Action: %d\n", resume, o_n, n, action);
+			if (action >= 0 && action<=12) {
+				int v = 0;
+				if (s->meta && s->meta->active) {
+					if (action==0) {
+						v = s->meta->perseq[o_n][12];
+					} else {
+						v = s->meta->perseq[o_n][action-1];
+						if (!v) {
+							v = s->meta->global[action-1];
+						}
+					}
+				}
+
+				if (v) {
+					printf("V: %d\n", v);
+					n = v-1;
+					if (resume) {
+						cursor = (n<<6);
+					}
+					else {
+						cursor = (n<<6) + (cursor&0x3F);
+					}
+				}
+			}
+
+			action = 0;
+			resume = 0;
+			// jump
+		}
+
+		if (o_n == -1) {
+			change=1;
 		}
 
 		pat = s->seq[n];
 	        i = cursor&0x3F;
 
-		if (o_n != n) {
+		if (change) {
 			printf("<<<<<<< Pattern %3d, Pos: %3d >>>>>>>\n", pat, n);
 			o_n = n;
 		}

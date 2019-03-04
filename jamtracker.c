@@ -63,20 +63,19 @@ SDL_mutex *mutex;
 
 int view = 0;
 
-void surface_header(int yi, int avg[8])
+int sst = 0;
+
+void surface_header(int yi, int avg[8], int st)
 {
 	TextBackGround=255;
 	TextColor=14;
 	FillColor=17;
 	Color=32;
-	FillArea(1, yi-4, 318, yi+112, 17);
-	FillArea(3, yi+49, 316, yi+59, 18);
-
     	//fillscreen(0x0);
 	//writest(100, 20, "JamTracker");
 	FillArea(5,  0, 30,50, 0);
 	FillArea(290,0,315,50, 0);
-
+	
 //	printf("[%5d %5d %5d %5d]\n", avg[0], avg[1],  avg[2], avg[3]);
 
 	FillArea(5,   50, 15,  50-avg[0], 2);
@@ -85,17 +84,52 @@ void surface_header(int yi, int avg[8])
 	FillArea(305, 50, 315, 50-avg[3], 2);
 }
 
-void surface_footer(int seq, int pat, int pos)
+void surface_footer(int seq, int pat, int pos, int st)
 {
 	char buffer[128];
 
+	int tc = 32;
+	static int rot = 0;
+
+	switch(st) {
+	case SEQUENCER_STOPPED:
+		tc = 40;
+		break;
+	case SEQUENCER_PAUSED:
+		tc = 46;
+		break;
+	case SEQUENCER_PLAYING:
+		tc = 46;
+		rot++;
+		break;
+	}
+
+
+	/*
+	TextBackGround=0;
+	TextColor=tc;
+	switch(rot%4) {
+	case 0:
+		writest(0, 172, "- - - - - - - - - - - - - - - - - - - - ");
+		break;
+	case 1:
+		writest(0, 172, " - - - - - - - - - - - - - - - - - - - -");
+		break;
+
+	case 2:
+		writest(0, 172, "  - - - - - - - - - - - - - - - - - - - ");
+		break;
+	case 3:
+		writest(0, 172, "   - - - - - - - - - - - - - - - - - - -");
+		break;
+	}
+	*/
 	TextBackGround=0;
 	TextColor=32;
 
 	writest(0, 176, "\xDA\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
 \xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC2\
 \xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xBF");
-
 
 	if(seq == -1) {
 		sprintf(buffer, "%c Position: -- %c Pattern: -- %c Row: -- %c", 179, 179, 179, 179);
@@ -111,7 +145,7 @@ void surface_footer(int seq, int pat, int pos)
 
 }
 
-void apply_surface(int seq, int pat, int pos, int avg[8])
+void apply_surface(int seq, int pat, int pos, int avg[8], int st)
 {
 	int yi = 60;
 	int nr = 13;
@@ -119,7 +153,10 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 
 	int i,j,ii=0;
 
-	surface_header(yi, avg);
+	surface_header(yi, avg, st);
+
+	FillArea(1, yi-4, 318, yi+112, 17);
+	FillArea(3, yi+49, 316, yi+59, 18);
 
 	char buffer[128];
 
@@ -135,6 +172,7 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 				ii+=3;
 
 			if (row == pos) {
+				//TextColor = (st == SEQUENCER_STOPPED) ? 32 : 40;
 				TextColor = 40;
 			} 
 			else if (row < pos) {
@@ -160,19 +198,29 @@ void apply_surface(int seq, int pat, int pos, int avg[8])
 		}
 	}
 
-	Color = 2;
+	switch(st) {
+	case SEQUENCER_STOPPED:
+		Color = 1;
+		break;
+	case SEQUENCER_PAUSED:
+		Color = 5;
+		break;
+	default:
+		Color = 2;
+	}
+
 	DrawRect(2, yi-3, 317, yi+111, LINE);
 	DrawLine(27, yi-2, 27, yi+110);
 	DrawLine(99, yi-2, 99, yi+110);
 	DrawLine(171, yi-2, 171, yi+110);
 	DrawLine(244, yi-2, 244, yi+110);
 
-	surface_footer(seq, pat, pos);
+	surface_footer(seq, pat, pos, st);
 
 	graph_refresh();
 }
 
-void apply_surface2(int seq, int pat, int pos, int avg[8])
+void apply_surface2(int seq, int pat, int pos, int avg[8], int st)
 {
 	int yi = 60;
 	int nr = 13;
@@ -180,29 +228,46 @@ void apply_surface2(int seq, int pat, int pos, int avg[8])
 
 	int i,j,ii=0;
 
-	surface_header(yi, avg);
+	surface_header(yi, avg, st);
+
+	FillArea(1, yi-4, 318, yi+112, 0);
 
 	char buffer[128];
 
 	TextColor=25;
 
 	ii = yi;
+	int matched = 0;
 	for(i=0;i<12;i++) {
+
+		TextColor = (sst&0xFF) == i+1 ? 46 : 25;
+
 		if (seqdta.meta->global[i]) {
+			if ((sst&0xFF) == i+1) {
+				matched = 1;
+			}
+
 			sprintf(buffer, "Event: %2d -> Next: %02X", i, seqdta.meta->global[i]-1);
-			writest(10, ii, buffer);
+			writest(50, ii, buffer);
 			ii+=8;
 			continue;
 		}
 
 		if (seq>=0&&seq<128 && seqdta.meta->perseq[seq][i]) {
+			if ((sst&0xFF) == i+1) {
+				matched = 1;
+			}
+
 			sprintf(buffer, "Event: %2d -> Next: %02X", i, seqdta.meta->perseq[seq][i]-1);
-			writest(10, ii, buffer);
+			writest(50, ii, buffer);
 			ii+=8;
 		}
 	}
 
 	ii+=8;
+
+	TextColor = matched ? 25 : 46;
+
 	if (seq>=0&&seq<128) {
 		if (seqdta.meta->perseq[seq][12]) {
 			sprintf(buffer, "Default: %02X", seqdta.meta->perseq[seq][12]-1);
@@ -211,10 +276,10 @@ void apply_surface2(int seq, int pat, int pos, int avg[8])
 			sprintf(buffer, "Default: %02X", seq+1);
 		}
 
-		writest(10,ii, buffer);
+		writest(50,ii, buffer);
 	}
 
-	surface_footer(seq, pat, pos);
+	surface_footer(seq, pat, pos, st);
 
 	graph_refresh();
 }
@@ -249,14 +314,14 @@ void show_song(MusicModule *mm)
 	}
 	graph_refresh();
 }
-void update_status(uint8_t seq, uint8_t pat, uint8_t pos, int avg[8])
+void update_status(uint8_t seq, uint8_t pat, uint8_t pos, int avg[8], int st)
 {
 	switch(view) {
 	case 1:
-		apply_surface2(seq, pat, pos, avg);
+		apply_surface2(seq, pat, pos, avg, st);
 	break;
 	default:
-		apply_surface(seq, pat, pos, avg);
+		apply_surface(seq, pat, pos, avg, st);
 	}
 }
 
@@ -375,7 +440,7 @@ int main( int argc, char *args[])
 	textwrite(tmp);
 	textwrite("\n");
 	show_song(mm);
-    update_status(-1,-1,-1, zero_avg);
+    update_status(-1,-1,-1, zero_avg, SEQUENCER_STOPPED);
 
     main_loop_new(mml);
 
@@ -405,17 +470,24 @@ int main_loop_new(MusicModuleList *mml)
 	int on_break = 0;
 	int stoped = 1;
 
-	update_status(0,0,0, zero_avg);
+	update_status(0,0,0, zero_avg, SEQUENCER_STOPPED);
 
 	while(!quit)
 	{
 		int sp = get_song_position();
 		if (sp!=-1) {
 			get_channel_avg(avg);
-			update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF, avg);
+			sst = get_song_status();
+			if (sst&PAUSE_FLAG) {
+				update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF, zero_avg, SEQUENCER_PAUSED);
+			}
+			else {
+				update_status( (sp>>16) &0xFF, (sp>>8) & 0xFF, sp & 0xFF, avg, SEQUENCER_PLAYING);
+			}
 			osp = sp;
 		} else {
-			update_status(0,0,0, zero_avg);
+			sst = 0;
+			update_status(0,0,0, zero_avg, SEQUENCER_STOPPED);
 		}
 
 		if (sp==-1 && sequence_status()==0) {
@@ -457,7 +529,7 @@ int main_loop_new(MusicModuleList *mml)
 					seqdta.smpdata = mm->samples;
 					seqdta.meta    = &(mm->meta);
 					show_song(mm);
-					update_status(0,0,0, zero_avg);
+					update_status(0,0,0, zero_avg, stoped ? SEQUENCER_STOPPED : SEQUENCER_PLAYING);
 					printf("PTR Set %p %p %d\n", seqdta.seq, seqdta.smpdata, (int)seqdta.npat);
 					//stoped = 0;
 					if (!stoped)
